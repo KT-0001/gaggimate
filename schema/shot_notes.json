@@ -42,6 +42,11 @@
       "type": "string",
       "enum": ["bitter", "balanced", "sour"]
     },
+    "roastLevel": {
+      "description": "Roast level of the coffee beans",
+      "type": "string",
+      "enum": ["light", "medium", "dark"]
+    },
     "notes": {
       "description": "User notes",
       "type": "string",

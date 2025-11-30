@@ -4,6 +4,7 @@ import { ApiServiceContext } from '../../services/ApiService.js';
 import { Spinner } from '../../components/Spinner.jsx';
 import { faEdit } from '@fortawesome/free-solid-svg-icons/faEdit';
 import { faSave } from '@fortawesome/free-solid-svg-icons/faSave';
+import { ShotFeedback, shotHistoryToSummary } from '../../components/ShotFeedback.tsx';
 
 export default function ShotNotesCard({ shot, onNotesUpdate, onNotesLoaded }) {
   const apiService = useContext(ApiServiceContext);
@@ -17,7 +18,12 @@ export default function ShotNotesCard({ shot, onNotesUpdate, onNotesLoaded }) {
     ratio: '',
     grindSetting: '',
     balanceTaste: 'balanced',
+    roastLevel: '',
     notes: '',
+  });
+
+  const [userPrefs, setUserPrefs] = useState({
+    showShotFeedback: false,
   });
 
   const [loading, setLoading] = useState(false);
@@ -52,6 +58,7 @@ export default function ShotNotesCard({ shot, onNotesUpdate, onNotesLoaded }) {
           ratio: '',
           grindSetting: '',
           balanceTaste: 'balanced',
+          roastLevel: '',
           notes: '',
         };
 
@@ -100,6 +107,7 @@ export default function ShotNotesCard({ shot, onNotesUpdate, onNotesLoaded }) {
           ratio: '',
           grindSetting: '',
           balanceTaste: 'balanced',
+          roastLevel: '',
           notes: '',
         };
 
@@ -342,6 +350,27 @@ export default function ShotNotesCard({ shot, onNotesUpdate, onNotesLoaded }) {
             </div>
           )}
         </div>
+
+        {/* Roast Level */}
+        <div className='form-control'>
+          <label className='mb-2 block text-sm font-medium'>Roast Level</label>
+          {isEditing ? (
+            <select
+              className='select select-bordered w-full'
+              value={notes.roastLevel || ''}
+              onChange={e => handleInputChange('roastLevel', e.target.value)}
+            >
+              <option value=''>Not set</option>
+              <option value='light'>Light</option>
+              <option value='medium'>Medium</option>
+              <option value='dark'>Dark</option>
+            </select>
+          ) : (
+            <div className='input input-bordered bg-base-200 w-full cursor-default capitalize'>
+              {notes.roastLevel || '—'}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Notes Text Area - Full Width */}
@@ -364,6 +393,16 @@ export default function ShotNotesCard({ shot, onNotesUpdate, onNotesLoaded }) {
             {notes.notes || 'No notes added'}
           </div>
         )}
+      </div>
+
+      {/* Shot Feedback Section */}
+      <div className='mt-8 border-t-base-content/10 border-t pt-6'>
+        <ShotFeedback
+          shot={shotHistoryToSummary(shot, notes)}
+          userPrefs={userPrefs}
+          onUserPrefsChange={setUserPrefs}
+          onRoastChange={(roast) => handleInputChange('roastLevel', roast || '')}
+        />
       </div>
     </div>
   );
