@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shot Feedback Feature Test</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@5.0.50/dist/full.min.css" rel="stylesheet" type="text/css" />
+    <style>
+        body { padding: 2rem; max-width: 1200px; margin: 0 auto; }
+        .test-case { margin-bottom: 2rem; padding: 1rem; border: 1px solid #e5e7eb; border-radius: 0.5rem; }
+        .test-input { background: #f3f4f6; padding: 0.5rem; margin: 0.5rem 0; border-radius: 0.25rem; font-family: monospace; font-size: 0.875rem; }
+    </style>
+</head>
+<body>
+    <h1 class="text-3xl font-bold mb-6">Shot Feedback Feature Test</h1>
+    
+    <div class="alert alert-info mb-8">
+        <div>
+            <h3 class="font-bold">Testing Instructions</h3>
+            <p class="text-sm mt-2">This page demonstrates the shot feedback logic with various test cases. In the actual application, this will appear in the Shot History page after expanding a shot and filling in the notes.</p>
+        </div>
+    </div>
+
+    <div class="test-case">
+        <h2 class="text-xl font-semibold mb-3">✅ Test 1: Perfect Shot (Balanced)</h2>
+        <div class="test-input">
+            Dose: 18g → Yield: 36.5g (target: 36g)<br>
+            Time: 29s (target: 30s)<br>
+            Ratio: 1:2.03 (close to 1:2)
+        </div>
+        <div class="mt-4">
+            <div class="alert alert-success flex flex-col gap-1 items-start">
+                <span class="font-medium">Shot matched the target recipe. Nice pull!</span>
+                <span class="text-xs opacity-80">Balanced extraction.</span>
+                <span class="text-xs opacity-80">Balanced strength.</span>
+                <span class="text-[11px] opacity-60 italic">Ultimately, it's down to taste – enjoy ☕️</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="test-case">
+        <h2 class="text-xl font-semibold mb-3">⚠️ Test 2: Under-extracted & Watery</h2>
+        <div class="test-input">
+            Dose: 18g → Yield: 45g (target: 36g)<br>
+            Time: 22s (target: 30s)<br>
+            Ratio: 1:2.5 (high, watery)
+        </div>
+        <div class="mt-4">
+            <div class="alert alert-warning flex flex-col gap-1 items-start">
+                <span class="font-medium">Shot ran fast and high-yield (weak). Try grinding finer and stopping a bit earlier.</span>
+                <span class="text-xs opacity-80">Often perceived as sour / sharp.</span>
+                <span class="text-xs opacity-80">On the watery side.</span>
+                <span class="text-[11px] opacity-60 italic">Ultimately, it's down to taste – enjoy ☕️</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="test-case">
+        <h2 class="text-xl font-semibold mb-3">⚠️ Test 3: Over-extracted & Strong</h2>
+        <div class="test-input">
+            Dose: 18g → Yield: 28g (target: 36g)<br>
+            Time: 40s (target: 30s)<br>
+            Ratio: 1:1.56 (low, concentrated)
+        </div>
+        <div class="mt-4">
+            <div class="alert alert-warning flex flex-col gap-1 items-start">
+                <span class="font-medium">Shot ran slow and low-yield (very strong). Try grinding coarser and letting it run a bit longer.</span>
+                <span class="text-xs opacity-80">Often perceived as bitter / harsh.</span>
+                <span class="text-xs opacity-80">Very concentrated.</span>
+                <span class="text-[11px] opacity-60 italic">Ultimately, it's down to taste – enjoy ☕️</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="test-case">
+        <h2 class="text-xl font-semibold mb-3">ℹ️ Test 4: Watery Strength (Extraction OK)</h2>
+        <div class="test-input">
+            Dose: 18g → Yield: 42g (target: 36g)<br>
+            Time: 30s (target: 30s)<br>
+            Ratio: 1:2.33 (high)
+        </div>
+        <div class="mt-4">
+            <div class="alert alert-info flex flex-col gap-1 items-start">
+                <span class="font-medium">Shot strength is on the weaker side. Try reducing yield slightly or grinding a bit finer.</span>
+                <span class="text-xs opacity-80">Extraction is close to target.</span>
+                <span class="text-xs opacity-80">Watery / low strength.</span>
+                <span class="text-[11px] opacity-60 italic">Ultimately, it's down to taste – enjoy ☕️</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="test-case">
+        <h2 class="text-xl font-semibold mb-3">☕ Test 5: Light Roast with Tips</h2>
+        <div class="test-input">
+            Dose: 18g → Yield: 38g (target: 36g)<br>
+            Time: 28s (target: 30s)<br>
+            Roast: Light (with roast tips enabled)
+        </div>
+        <div class="mt-4">
+            <div class="alert alert-success flex flex-col gap-1 items-start">
+                <span class="font-medium">Shot matched the target recipe. Nice pull!</span>
+                <span class="text-xs opacity-80">Balanced extraction.</span>
+                <span class="text-xs opacity-80">Balanced strength.</span>
+                <span class="text-xs opacity-80">Light roasts often benefit from slightly longer ratios or finer grinds to tame sharp acidity.</span>
+                <span class="text-[11px] opacity-60 italic">Ultimately, it's down to taste – enjoy ☕️</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="test-case">
+        <h2 class="text-xl font-semibold mb-3">☕ Test 6: Dark Roast Warning</h2>
+        <div class="test-input">
+            Dose: 18g → Yield: 36g (target: 36g)<br>
+            Time: 28s (target: 25s)<br>
+            Roast: Dark (with roast tips enabled)
+        </div>
+        <div class="mt-4">
+            <div class="alert alert-info flex flex-col gap-1 items-start">
+                <span class="font-medium">Shot deviated from the target. Adjust grind or ratio and try again.</span>
+                <span class="text-xs opacity-80">Likely over-extracted (long shot).</span>
+                <span class="text-xs opacity-80">Strength is close to target.</span>
+                <span class="text-xs opacity-80">Dark roasts can over-extract quickly; shorter shots or coarser grinds often taste better.</span>
+                <span class="text-[11px] opacity-60 italic">Ultimately, it's down to taste – enjoy ☕️</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-8 border-t pt-8">
+        <h2 class="text-2xl font-bold mb-4">UI Components Preview</h2>
+        
+        <div class="space-y-6 max-w-2xl">
+            <!-- Toggle -->
+            <div class="flex items-center justify-between">
+                <span class="text-xs uppercase tracking-wide">Show Shot Feedback</span>
+                <input type="checkbox" class="toggle toggle-xs" checked />
+            </div>
+
+            <!-- Roast selection -->
+            <div class="flex flex-wrap items-end gap-4">
+                <label class="form-control w-full max-w-xs">
+                    <div class="label pb-1">
+                        <span class="label-text text-xs uppercase">Roast type</span>
+                    </div>
+                    <select class="select select-sm select-bordered">
+                        <option value="">Not set</option>
+                        <option value="light">Light roast</option>
+                        <option value="medium" selected>Medium roast</option>
+                        <option value="dark">Dark roast</option>
+                    </select>
+                </label>
+
+                <label class="label cursor-pointer gap-2">
+                    <span class="label-text text-xs">Roast Type Tips</span>
+                    <input type="checkbox" class="toggle toggle-xs" checked />
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-8 p-4 bg-gray-100 rounded">
+        <h3 class="font-bold mb-2">Manual Testing Checklist:</h3>
+        <ul class="list-disc list-inside space-y-1 text-sm">
+            <li>Open Gaggimate web UI and navigate to Shot History</li>
+            <li>Expand a shot with scale data (volume > 0g)</li>
+            <li>Fill in "Dose In" (e.g., 18g)</li>
+            <li>Verify "Dose Out" auto-fills from shot volume</li>
+            <li>Select a roast level (light/medium/dark)</li>
+            <li>Enable "Show Shot Feedback" toggle</li>
+            <li>Enable "Roast Type Tips" to see roast-specific advice</li>
+            <li>Verify feedback card appears with appropriate color</li>
+            <li>Check that suggestions make sense for the shot parameters</li>
+            <li>Change roast level and verify different roast notes appear</li>
+            <li>Disable feedback toggle and verify card disappears</li>
+        </ul>
+    </div>
+</body>
+</html>
