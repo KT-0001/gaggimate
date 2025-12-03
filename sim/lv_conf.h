@@ -1,11 +1,11 @@
 /**
- * @file lv_conf_simulator.h
+ * @file lv_conf.h
  * LVGL configuration for web browser simulator
  * Based on lv_conf.h from display target but adapted for simulator
  */
 
-#ifndef LV_CONF_SIMULATOR_H
-#define LV_CONF_SIMULATOR_H
+#ifndef LV_CONF_H
+#define LV_CONF_H
 
 #include <stdint.h>
 
@@ -372,4 +372,4 @@
 #define LV_USE_DEMO_STRESS 0
 #define LV_USE_DEMO_MUSIC 0
 
-#endif /*LV_CONF_SIMULATOR_H*/
+#endif /*LV_CONF_H*/

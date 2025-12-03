@@ -3,7 +3,7 @@
  * @brief Mouse cursor icon data for simulator
  */
 
-#include "lvgl/lvgl.h"
+#include "lvgl.h"
 
 // Simple cursor icon (optional - SDL provides its own)
 // This can be used if you want a custom cursor in LVGL

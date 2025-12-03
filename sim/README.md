@@ -13,6 +13,8 @@ The simulator uses [LVGL](https://lvgl.io/) compiled to WebAssembly with [Emscri
 - **Accurate rendering**: Same LVGL version (8.4) as hardware
 - **Fast iteration**: Test UI changes instantly
 - **480x480 display**: Matches the LilyGo T-RGB resolution
+- **Automated testing**: Built-in test framework for UI validation
+- **Error reporting**: Detailed test results showing pass/fail status
 
 ## Prerequisites
 
@@ -76,17 +78,74 @@ Navigate to: **http://localhost:8000**
 
 The simulator should load and display the GaggiMate UI.
 
-## Development Workflow
+## Automated Testing
 
-### Testing UI Changes
+The simulator includes a comprehensive test framework for validating UI functionality.
 
-1. **Make changes** to UI files in `src/display/ui/`
-2. **Rebuild** the simulator: `./build.sh`
-3. **Refresh** your browser (Ctrl+R or Cmd+R)
-4. **Test** the changes interactively
+### Running Tests
 
-### Testing on a Branch or Fork
+1. Open the simulator: http://localhost:8000
+2. Click the **▶ Run Tests** button in the Test Suite panel
+3. View results in real-time as tests execute
 
+### Test Results
+
+Tests verify:
+- ✅ Screen transitions (Init → Standby)
+- ✅ Navigation buttons (Brew, Grind, Menu)
+- ✅ Back button navigation
+- ✅ Temperature/time adjustments
+- ✅ Action buttons (Start, Flush)
+- ✅ Multi-screen workflows
+
+Results show:
+- **Pass/Fail status** for each test
+- **Expected vs Actual** values for failures
+- **Execution time** per test
+- **Detailed error messages**
+
+### Writing Custom Tests
+
+Edit `test_cases.js` to add new tests:
+
+```javascript
+test('My custom test', async (ctx) => {
+    // Wait for screen to load
+    await ctx.waitForScreen('StandbyScreen', 3000);
+    
+    // Click a button
+    await ctx.clickButton('brew_button');
+    
+    // Verify screen transition
+    await ctx.assertScreenIs('BrewScreen', 'Should navigate to Brew screen');
+});
+```
+
+**Documentation:**
+- Quick reference: `TESTING.md`
+- Complete guide: `TEST_GUIDE.md`
+sim/
+├── README.md                   # This file
+├── TESTING.md                  # Quick testing reference
+├── TEST_GUIDE.md               # Complete testing documentation
+├── build.sh                    # Build script
+├── serve.sh                    # Development server script
+├── CMakeLists.txt              # CMake configuration
+├── lv_conf.h                   # LVGL configuration for simulator
+├── index.html                  # HTML shell for the simulator
+├── main.c                      # Simulator entry point
+├── ui_stubs.cpp                # UI event handler implementations
+├── test_framework.js           # Test automation framework
+├── test_cases.js               # Test case definitions
+├── test_helpers.c              # C functions for test support
+├── mouse_cursor_icon.c         # Mouse cursor (optional)
+├── lvgl/                       # LVGL library (auto-cloned)
+└── build/                      # Build output (gitignored)
+    ├── lvgl_sim.js             # Compiled JavaScript
+    ├── lvgl_sim.wasm           # WebAssembly binary
+    ├── lvgl_sim.data           # Preloaded assets
+    ├── test_framework.js       # Test framework (copied)
+    └── test_cases.js           # Test cases (copied)
 ```bash
 # Switch to your feature branch
 git checkout feature/my-ui-changes

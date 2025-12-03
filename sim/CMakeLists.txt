@@ -18,8 +18,8 @@ if(EMSCRIPTEN)
         -s WASM=1 \
         -s ALLOW_MEMORY_GROWTH=1 \
         -s TOTAL_MEMORY=67108864 \
-        -s EXPORTED_RUNTIME_METHODS='[\"ccall\",\"cwrap\"]' \
-        -s EXPORTED_FUNCTIONS='[\"_main\"]' \
+        -s EXPORTED_RUNTIME_METHODS='[\"ccall\",\"cwrap\",\"UTF8ToString\",\"stringToUTF8\",\"lengthBytesUTF8\"]' \
+        -s EXPORTED_FUNCTIONS='[\"_main\",\"_getCurrentScreenName\",\"_simulateButtonClick\",\"_malloc\",\"_free\"]' \
         --shell-file ${CMAKE_CURRENT_SOURCE_DIR}/index.html \
         -s ASYNCIFY \
         -s EXIT_RUNTIME=0 \
@@ -29,9 +29,7 @@ if(EMSCRIPTEN)
 endif()
 
 # LVGL configuration
-set(LV_CONF_PATH ${CMAKE_CURRENT_SOURCE_DIR}/lv_conf_simulator.h CACHE STRING "" FORCE)
 add_compile_definitions(LV_CONF_INCLUDE_SIMPLE)
-add_compile_definitions(LV_CONF_PATH="${LV_CONF_PATH}")
 
 # LVGL library
 set(LVGL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../.pio/libdeps/display/lvgl)
@@ -53,10 +51,28 @@ target_include_directories(lvgl PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# UI sources from display project
+set(UI_BASE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../src/display/ui/default/lvgl)
+file(GLOB UI_C_SOURCES 
+    ${UI_BASE_DIR}/ui.c
+    ${UI_BASE_DIR}/ui_helpers.c
+    ${UI_BASE_DIR}/components/*.c
+    ${UI_BASE_DIR}/screens/*.c
+    ${UI_BASE_DIR}/images/*.c
+)
+file(GLOB UI_CPP_SOURCES
+    ${UI_BASE_DIR}/ui_theme_manager.cpp
+    ${UI_BASE_DIR}/ui_themes.cpp
+)
+set(UI_SOURCES ${UI_C_SOURCES} ${UI_CPP_SOURCES})
+
 # Simulator executable
 set(SIMULATOR_SOURCES
     main.c
     mouse_cursor_icon.c
+    ui_stubs.cpp
+    test_helpers.cpp
+    ${UI_SOURCES}
 )
 
 add_executable(lvgl_sim ${SIMULATOR_SOURCES})
@@ -64,16 +80,21 @@ add_executable(lvgl_sim ${SIMULATOR_SOURCES})
 target_include_directories(lvgl_sim PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/display
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/display/ui/default/lvgl
     ${LVGL_DIR}
 )
 
 target_link_libraries(lvgl_sim lvgl)
+# Copy generated HTML as index.html for web server
+add_custom_command(TARGET lvgl_sim POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+    ${CMAKE_CURRENT_BINARY_DIR}/lvgl_sim.html
+    ${CMAKE_CURRENT_BINARY_DIR}/index.html
+    COMMAND ${CMAKE_COMMAND} -E copy
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_framework.js
+    ${CMAKE_CURRENT_BINARY_DIR}/test_framework.js
+    COMMAND ${CMAKE_COMMAND} -E copy
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_cases.js
+    ${CMAKE_CURRENT_BINARY_DIR}/test_cases.js
+)
 
-# Copy index.html to build directory for standalone use
-if(NOT EMSCRIPTEN)
-    add_custom_command(TARGET lvgl_sim POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy
-        ${CMAKE_CURRENT_SOURCE_DIR}/index.html
-        ${CMAKE_CURRENT_BINARY_DIR}/index.html
-    )
-endif()
