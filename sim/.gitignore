@@ -1,0 +1,28 @@
+# Build directory
+build/
+
+# LVGL library (will be cloned)
+lvgl/
+
+# Compiled files
+*.o
+*.a
+*.wasm
+*.js
+*.data
+*.html.mem
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.log

@@ -1,0 +1,69 @@
+# Example GitHub Actions Workflow for Simulator
+# 
+# This file shows how to automatically build the simulator in CI/CD
+# and optionally deploy it for PR previews.
+#
+# To use: Copy to .github/workflows/simulator.yml in your repository
+
+name: Display Simulator CI
+
+on:
+  pull_request:
+    paths:
+      - 'src/display/**'
+      - 'sim/**'
+  push:
+    branches: [master, main]
+    paths:
+      - 'src/display/**'
+      - 'sim/**'
+
+jobs:
+  build-simulator:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Setup Emscripten
+      uses: mymindstorm/setup-emsdk@v12
+      with:
+        version: 'latest'
+        
+    - name: Verify Emscripten
+      run: emcc --version
+      
+    - name: Build simulator
+      run: |
+        cd sim
+        ./build.sh
+        
+    - name: Upload simulator artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: simulator-build
+        path: sim/build/
+        retention-days: 30
+        
+    # Optional: Deploy to GitHub Pages for preview
+    - name: Deploy to GitHub Pages
+      if: github.ref == 'refs/heads/master'
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./sim/build
+        destination_dir: simulator
+        
+    # Optional: Comment on PR with preview link
+    - name: Comment PR
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: '✨ Display simulator built successfully! Download the artifact to test locally.'
+          })
