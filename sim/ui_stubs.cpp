@@ -56,13 +56,24 @@ static bool sim_volumetric = false; // false=timed, true=volumetric
 static int sim_profile_index = 0;
 static const char * sim_profiles[] = {"Cremina Lever","9Bar","LM Leva","Classic"};
 static const char * sim_profile_files[] = {"data/p/lever.json","data/p/9bar.json","data/p/lmleva.json","data/p/adapt.json"};
-// Simple navigation history to support "back" (caret ^)
-static lv_obj_t * last_screen = NULL;
+// Navigation history stack for caret/back behavior
+static std::vector<lv_obj_t*> screen_history;
 static void navigate_to(lv_obj_t *screen) {
     if (!screen) return;
     lv_obj_t *current = lv_scr_act();
-    if (current && current != screen) last_screen = current;
+    if (current && current != screen) {
+        screen_history.push_back(current);
+    }
     lv_scr_load(screen);
+}
+static void navigate_back() {
+    if (!screen_history.empty()) {
+        lv_obj_t *target = screen_history.back();
+        screen_history.pop_back();
+        lv_scr_load(target);
+    } else {
+        lv_scr_load(ui_StandbyScreen);
+    }
 }
 
 static void show_toast(const char *msg) {
@@ -152,11 +163,6 @@ extern "C" {
             lv_scr_load(ui_StandbyScreen);
             lv_timer_del(t);
         }, 2000, NULL);
-    }
-    
-    void onBrewCancel(lv_event_t *e) {
-        sim_brewing = false;
-        printf("Brew cancelled\n");
     }
     
     void onBrewStart(lv_event_t *e) {
@@ -291,6 +297,13 @@ extern "C" {
         // Navigation and screen load
         // Caret (^) back button: go back to previous screen if known, else Standby
         void onMenuClick(lv_event_t *e) {
+            // If brewing, caret acts as cancel
+            if (lv_scr_act() == ui_BrewScreen && sim_brewing) {
+                onBrewCancel(e);
+                show_toast("Brew cancelled");
+                printf("Caret/back cancelled brew\n");
+                return;
+            }
             // Exit Brew settings if adjustments are visible
             if (lv_scr_act() == ui_BrewScreen && ui_BrewScreen_adjustments && !lv_obj_has_flag(ui_BrewScreen_adjustments, LV_OBJ_FLAG_HIDDEN)) {
                 lv_obj_add_flag(ui_BrewScreen_adjustments, LV_OBJ_FLAG_HIDDEN);
@@ -299,14 +312,8 @@ extern "C" {
                 printf("Exited Brew settings\n");
                 return;
             }
-            if (last_screen) {
-                lv_obj_t *target = last_screen;
-                last_screen = NULL;
-                navigate_to(target);
-                printf("Back to previous screen\n");
-            } else {
-                onStandbyScreen(e);
-            }
+            navigate_back();
+            printf("Back navigation invoked\n");
         }
         void onStandby(lv_event_t *e) { onStandbyScreen(e); }
         void onBrewScreenLoad(lv_event_t *e) { /* no-op for sim */ }
@@ -356,6 +363,9 @@ extern "C" {
             // Apply selected profile to Brew screen and start brewing
             const char *name = sim_profiles[sim_profile_index];
             if (ui_BrewScreen_profileName) lv_label_set_text(ui_BrewScreen_profileName, name);
+            // Hide profile selection panel and show main brew controls
+            if (ui_BrewScreen_profileInfo) lv_obj_add_flag(ui_BrewScreen_profileInfo, LV_OBJ_FLAG_HIDDEN);
+            if (ui_BrewScreen_adjustments) lv_obj_clear_flag(ui_BrewScreen_adjustments, LV_OBJ_FLAG_HIDDEN);
             // Read simple targets from profile JSON (temp, duration) if available
             const char *profile_path = sim_profile_files[sim_profile_index];
             FILE *fp = fopen(profile_path, "rb");
@@ -407,6 +417,9 @@ extern "C" {
             sim_phase_index = -1;
             sim_phase_elapsed = 0.0f;
             sim_brewing = true;
+            // Disable profile navigation while brewing
+            if (ui_BrewScreen_previousProfileBtn) lv_obj_add_state(ui_BrewScreen_previousProfileBtn, LV_STATE_DISABLED);
+            if (ui_BrewScreen_nextProfileBtn) lv_obj_add_state(ui_BrewScreen_nextProfileBtn, LV_STATE_DISABLED);
             // begin first phase immediately
             sim_begin_next_phase();
             if (!brew_timer) {
@@ -439,11 +452,33 @@ extern "C" {
                     // finished all phases
                     if (sim_phase_index >= (int)sim_phases.size()) {
                         sim_brewing = false;
+                        // Re-enable profile navigation once brewing ends
+                        if (ui_BrewScreen_previousProfileBtn) lv_obj_clear_state(ui_BrewScreen_previousProfileBtn, LV_STATE_DISABLED);
+                        if (ui_BrewScreen_nextProfileBtn) lv_obj_clear_state(ui_BrewScreen_nextProfileBtn, LV_STATE_DISABLED);
                     }
                 }, 100, NULL);
             }
             show_toast("Profile accepted — starting brew");
             printf("Profile accepted and brew started: %s\n", name);
+        }
+
+        // Cancel brew and return to selection/settings
+        void onBrewCancel(lv_event_t *e) {
+            if (sim_brewing) {
+                sim_brewing = false;
+            }
+            if (brew_timer) {
+                lv_timer_del(brew_timer);
+                brew_timer = NULL;
+            }
+            // Reset UI states
+            if (ui_BrewScreen_weightLabel) lv_label_set_text(ui_BrewScreen_weightLabel, sim_volumetric ? "0 g" : "-");
+            if (ui_BrewScreen_previousProfileBtn) lv_obj_clear_state(ui_BrewScreen_previousProfileBtn, LV_STATE_DISABLED);
+            if (ui_BrewScreen_nextProfileBtn) lv_obj_clear_state(ui_BrewScreen_nextProfileBtn, LV_STATE_DISABLED);
+            // Show profile panel again
+            if (ui_BrewScreen_profileInfo) lv_obj_clear_flag(ui_BrewScreen_profileInfo, LV_OBJ_FLAG_HIDDEN);
+            show_toast("Brew cancelled");
+            printf("Brew cancelled and UI reset\n");
         }
         void onProfileSaveAsNew(lv_event_t *e) { printf("Profile saved as new based on: %s\n", sim_profiles[sim_profile_index]); }
     
@@ -687,6 +722,8 @@ extern "C" void onProfileLoad(lv_event_t *e) {
     }
     navigate_to(ui_BrewScreen);
     printf("Profile applied: %s\n", name);
+    // Treat 'choose' on ProfileScreen as accept + start brew
+    onProfileAccept(e);
 }
 extern "C" void onSimpleProcessScreenLoad(lv_event_t *e) { printf("SimpleProcess loaded\n"); }
 extern "C" void onSimpleProcessToggle(lv_event_t *e) { sim_brewing = !sim_brewing; printf("Process %s\n", sim_brewing ? "resume" : "pause"); }
