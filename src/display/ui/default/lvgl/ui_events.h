@@ -47,6 +47,9 @@ void onGrindScreenLoad(lv_event_t *e);
 void onGrindToggle(lv_event_t *e);
 void onGrindTimeRaise(lv_event_t *e);
 void onGrindTimeLower(lv_event_t *e);
+// Simulator-specific click wrappers for visual confirmation before delegate
+void onBrewAcceptClicked(lv_event_t *e);
+void onProfileChooseClicked(lv_event_t *e);
 
 #ifdef __cplusplus
 } /*extern "C"*/
