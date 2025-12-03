@@ -157,6 +157,15 @@ static void sim_begin_next_phase() {
 
 // UI event callbacks with actual functionality
 extern "C" {
+    // Visual confirmations for UI clicks, then delegate to existing logic
+    void onBrewAcceptClicked(lv_event_t *e) {
+        show_toast("Tick clicked");
+        onProfileAccept(e);
+    }
+    void onProfileChooseClicked(lv_event_t *e) {
+        show_toast("Choose clicked");
+        onProfileLoad(e);
+    }
     void onLoadStarted(lv_event_t * e) {
         // Transition from Init to Standby after loading
         lv_timer_t * timer = lv_timer_create([](lv_timer_t * t) {
