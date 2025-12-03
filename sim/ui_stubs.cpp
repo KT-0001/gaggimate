@@ -356,6 +356,51 @@ extern "C" {
             // Apply selected profile to Brew screen and start brewing
             const char *name = sim_profiles[sim_profile_index];
             if (ui_BrewScreen_profileName) lv_label_set_text(ui_BrewScreen_profileName, name);
+            // Read simple targets from profile JSON (temp, duration) if available
+            const char *profile_path = sim_profile_files[sim_profile_index];
+            FILE *fp = fopen(profile_path, "rb");
+            if (fp) {
+                fseek(fp, 0, SEEK_END);
+                long len = ftell(fp);
+                fseek(fp, 0, SEEK_SET);
+                std::string json;
+                json.resize(len);
+                if (len > 0) fread(&json[0], 1, len, fp);
+                fclose(fp);
+                auto findNumber = [&](const char *key) -> double {
+                    size_t pos = json.find(key);
+                    if (pos == std::string::npos) return NAN;
+                    // find colon then parse number
+                    pos = json.find(':', pos);
+                    if (pos == std::string::npos) return NAN;
+                    // skip spaces
+                    while (pos < json.size() && (json[pos] == ':' || json[pos] == ' ' || json[pos] == '\t')) pos++;
+                    // collect until non-number
+                    size_t end = pos;
+                    while (end < json.size() && (isdigit(json[end]) || json[end] == '.' || json[end] == '-')) end++;
+                    try { return std::stod(json.substr(pos, end - pos)); } catch (...) { return NAN; }
+                };
+                double tgtTemp = findNumber("targetTemp");
+                double tgtDuration = findNumber("targetDuration");
+                if (!std::isnan(tgtTemp)) {
+                    sim_temperature = (float)tgtTemp;
+                    if (ui_BrewScreen_targetTemp) {
+                        char buf[16];
+                        snprintf(buf, sizeof(buf), "%.1f°C", sim_temperature);
+                        lv_label_set_text(ui_BrewScreen_targetTemp, buf);
+                    }
+                }
+                if (!std::isnan(tgtDuration)) {
+                    sim_brew_time = (float)tgtDuration;
+                    if (ui_BrewScreen_targetDuration) {
+                        int minutes = (int)(sim_brew_time) / 60;
+                        int seconds = (int)(sim_brew_time) % 60;
+                        char buf[16];
+                        snprintf(buf, sizeof(buf), "%d:%02d", minutes, seconds);
+                        lv_label_set_text(ui_BrewScreen_targetDuration, buf);
+                    }
+                }
+            }
             // Load phases for the chosen profile and kick off the brew timer
             sim_load_phases_for_profile(name);
             sim_weight = 0.0f;
