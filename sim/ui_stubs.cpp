@@ -26,6 +26,7 @@ extern lv_obj_t * ui_BrewScreen_modeSwitch;
 extern lv_obj_t * ui_BrewScreen_volumetricButton;
 extern lv_obj_t * ui_BrewScreen_weightLabel;
 extern lv_obj_t * ui_BrewScreen_profileInfo;
+extern lv_obj_t * ui_BrewScreen_Container3;
 extern lv_obj_t * ui_BrewScreen_profileName;
 extern lv_obj_t * ui_BrewScreen_adjustments;
 extern lv_obj_t * ui_BrewScreen_targetTemp;
@@ -37,6 +38,14 @@ extern lv_obj_t * uic_BrewScreen_dials_pressureGauge;
 extern lv_obj_t * uic_BrewScreen_dials_pressureTarget;
 extern lv_obj_t * uic_BrewScreen_dials_pressureText;
 extern lv_obj_t * uic_BrewScreen_dials_tempText;
+
+// Image references for arrow buttons (from ProfileScreen)
+extern const lv_img_dsc_t ui_img_98036921; // left arrow
+extern const lv_img_dsc_t ui_img_944513416; // right arrow
+
+// Arrow buttons for profile navigation on BrewScreen
+static lv_obj_t * ui_BrewScreen_previousProfileBtn = NULL;
+static lv_obj_t * ui_BrewScreen_nextProfileBtn = NULL;
 
 // Simulated state
 static float sim_temperature = 93.0f;
@@ -331,6 +340,9 @@ extern "C" {
                 else lv_obj_clear_flag(ui_BrewScreen_adjustments, LV_OBJ_FLAG_HIDDEN);
             }
         }
+        void onVolumetricHold(lv_event_t *e) {
+            printf("Volumetric button held (long press)\n");
+        }
         // Settings button should open Settings/Status, not profile chooser
         void onProfileSettings(lv_event_t *e) {
             navigate_to(ui_BrewScreen);
@@ -416,6 +428,37 @@ extern "C" {
     void onBrewScreen(lv_event_t *e) {
         navigate_to(ui_BrewScreen);
         sim_brewing = false;
+        
+        // Add arrow buttons to Container3 for profile navigation (if not already created)
+        if (ui_BrewScreen_Container3 && !ui_BrewScreen_previousProfileBtn) {
+            // Create Previous Profile button (left arrow)
+            ui_BrewScreen_previousProfileBtn = lv_imgbtn_create(ui_BrewScreen_Container3);
+            lv_imgbtn_set_src(ui_BrewScreen_previousProfileBtn, LV_IMGBTN_STATE_RELEASED, NULL, &ui_img_98036921, NULL);
+            lv_obj_set_width(ui_BrewScreen_previousProfileBtn, 40);
+            lv_obj_set_height(ui_BrewScreen_previousProfileBtn, 40);
+            lv_obj_set_align(ui_BrewScreen_previousProfileBtn, LV_ALIGN_CENTER);
+            lv_obj_set_style_img_recolor(ui_BrewScreen_previousProfileBtn, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_img_recolor_opa(ui_BrewScreen_previousProfileBtn, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_add_event_cb(ui_BrewScreen_previousProfileBtn, onPreviousProfile, LV_EVENT_CLICKED, NULL);
+            
+            // Create Next Profile button (right arrow)
+            ui_BrewScreen_nextProfileBtn = lv_imgbtn_create(ui_BrewScreen_Container3);
+            lv_imgbtn_set_src(ui_BrewScreen_nextProfileBtn, LV_IMGBTN_STATE_RELEASED, NULL, &ui_img_944513416, NULL);
+            lv_obj_set_width(ui_BrewScreen_nextProfileBtn, 40);
+            lv_obj_set_height(ui_BrewScreen_nextProfileBtn, 40);
+            lv_obj_set_align(ui_BrewScreen_nextProfileBtn, LV_ALIGN_CENTER);
+            lv_obj_set_style_img_recolor(ui_BrewScreen_nextProfileBtn, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_img_recolor_opa(ui_BrewScreen_nextProfileBtn, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_add_event_cb(ui_BrewScreen_nextProfileBtn, onNextProfile, LV_EVENT_CLICKED, NULL);
+            
+            // Move children within Container3 to get proper flex order:
+            // We want: [prevBtn] [profileName] [settingsBtn] [profileSelectBtn] [nextBtn]
+            // Container3 has flex row layout, so order matters
+            // Move previousBtn to front, nextBtn to end
+            lv_obj_move_to_index(ui_BrewScreen_previousProfileBtn, 0);
+            // nextBtn should be last (will auto-position at end with flex)
+        }
+        
         printf("Navigated to Brew Screen\n");
     }
     
