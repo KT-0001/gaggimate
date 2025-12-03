@@ -352,7 +352,54 @@ extern "C" {
             printf("Opened Brew settings mode on Brew screen\n");
         }
         void onProfileSave(lv_event_t *e) { printf("Profile saved: %s\n", sim_profiles[sim_profile_index]); }
-        void onProfileAccept(lv_event_t *e) { printf("Profile accepted: %s\n", sim_profiles[sim_profile_index]); }
+        void onProfileAccept(lv_event_t *e) {
+            // Apply selected profile to Brew screen and start brewing
+            const char *name = sim_profiles[sim_profile_index];
+            if (ui_BrewScreen_profileName) lv_label_set_text(ui_BrewScreen_profileName, name);
+            // Load phases for the chosen profile and kick off the brew timer
+            sim_load_phases_for_profile(name);
+            sim_weight = 0.0f;
+            sim_phase_index = -1;
+            sim_phase_elapsed = 0.0f;
+            sim_brewing = true;
+            // begin first phase immediately
+            sim_begin_next_phase();
+            if (!brew_timer) {
+                brew_timer = lv_timer_create([](lv_timer_t *t){
+                    // advance time
+                    if (!sim_brewing) return;
+                    const float dt = 0.1f; // 100ms tick
+                    sim_phase_elapsed += dt;
+                    // simple dynamics: pressure approaches target, temp hovers near target
+                    sim_pressure_bar += (sim_target_pressure_bar - sim_pressure_bar) * 0.05f;
+                    sim_temp_c += (sim_temperature - sim_temp_c) * 0.02f;
+                    sim_weight += sim_flow_rate_gps * dt;
+                    // update UI dials/texts if available
+                    if (uic_BrewScreen_dials_pressureGauge) lv_meter_set_indicator_value(uic_BrewScreen_dials_pressureGauge, NULL, (int)(sim_pressure_bar * 10));
+                    if (uic_BrewScreen_dials_tempGauge) lv_meter_set_indicator_value(uic_BrewScreen_dials_tempGauge, NULL, (int)(sim_temp_c * 10));
+                    if (ui_BrewScreen_weightLabel) {
+                        char buf[16];
+                        snprintf(buf, sizeof(buf), "%d g", (int)sim_weight);
+                        lv_label_set_text(ui_BrewScreen_weightLabel, buf);
+                    }
+                    // phase completion or stop conditions
+                    if (sim_phase_index >= 0 && sim_phase_index < (int)sim_phases.size()) {
+                        const SimPhase &p = sim_phases[sim_phase_index];
+                        bool time_done = sim_phase_elapsed >= p.duration_s && p.duration_s > 0.0f;
+                        bool vol_done = (p.stop_volumetric_g > 0.0f) && (sim_weight >= p.stop_volumetric_g);
+                        if (time_done || vol_done) {
+                            sim_begin_next_phase();
+                        }
+                    }
+                    // finished all phases
+                    if (sim_phase_index >= (int)sim_phases.size()) {
+                        sim_brewing = false;
+                    }
+                }, 100, NULL);
+            }
+            show_toast("Profile accepted — starting brew");
+            printf("Profile accepted and brew started: %s\n", name);
+        }
         void onProfileSaveAsNew(lv_event_t *e) { printf("Profile saved as new based on: %s\n", sim_profiles[sim_profile_index]); }
     
         // Grinding controls
