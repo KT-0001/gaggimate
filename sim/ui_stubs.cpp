@@ -304,14 +304,14 @@ extern "C" {
                 printf("Caret/back cancelled brew\n");
                 return;
             }
-            // Exit Brew settings if adjustments are visible
-            if (lv_scr_act() == ui_BrewScreen && ui_BrewScreen_adjustments && !lv_obj_has_flag(ui_BrewScreen_adjustments, LV_OBJ_FLAG_HIDDEN)) {
-                lv_obj_add_flag(ui_BrewScreen_adjustments, LV_OBJ_FLAG_HIDDEN);
-                if (ui_BrewScreen_profileInfo) lv_obj_clear_flag(ui_BrewScreen_profileInfo, LV_OBJ_FLAG_HIDDEN);
+            // If on Profile screen, go back to Brew directly
+            if (lv_scr_act() == ui_ProfileScreen) {
+                navigate_to(ui_BrewScreen);
                 show_toast("Back to Brew");
-                printf("Exited Brew settings\n");
+                printf("Back from Profile to Brew\n");
                 return;
             }
+            // Otherwise pop history or fall back to Standby
             navigate_back();
             printf("Back navigation invoked\n");
         }
@@ -555,6 +555,13 @@ extern "C" {
     void onBrewScreen(lv_event_t *e) {
         navigate_to(ui_BrewScreen);
         sim_brewing = false;
+        // Ensure accept/tick is visible on Brew when selecting profiles
+        if (ui_BrewScreen_acceptButton) {
+            lv_obj_clear_flag(ui_BrewScreen_acceptButton, LV_OBJ_FLAG_HIDDEN);
+        }
+        if (ui_BrewScreen_profileInfo) {
+            lv_obj_clear_flag(ui_BrewScreen_profileInfo, LV_OBJ_FLAG_HIDDEN);
+        }
         
         // Add arrow buttons to Container3 for profile navigation (if not already created)
         if (ui_BrewScreen_Container3 && !ui_BrewScreen_previousProfileBtn) {
