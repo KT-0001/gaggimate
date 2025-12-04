@@ -74,7 +74,11 @@ static void navigate_to(lv_obj_t *screen) {
     }
     
     if (current_screen && current_screen != screen) {
-        screen_history.push_back(current_screen);
+        // Only push to history if not immediately going back to the previous item
+        // (This prevents ProfileScreen -> BrewScreen from creating circular history)
+        if (screen_history.empty() || screen_history.back() != screen) {
+            screen_history.push_back(current_screen);
+        }
         // Hide previous screen
         lv_obj_add_flag(current_screen, LV_OBJ_FLAG_HIDDEN);
     }
