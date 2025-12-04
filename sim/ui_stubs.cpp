@@ -64,28 +64,44 @@ static const char * sim_profiles[] = {"Cremina Lever","9Bar","LM Leva","Classic"
 static const char * sim_profile_files[] = {"data/p/lever.json","data/p/9bar.json","data/p/lmleva.json","data/p/adapt.json"};
 // Navigation history stack for caret/back behavior
 static std::vector<lv_obj_t*> screen_history;
+// Current active screen tracker
+static lv_obj_t *current_screen = NULL;
+
 static void navigate_to(lv_obj_t *screen) {
     if (!screen) {
         printf("navigate_to: NULL screen pointer!\n");
         return;
     }
-    lv_obj_t *current = lv_scr_act();
-    printf("navigate_to: current=%p, target=%p\n", (void*)current, (void*)screen);
-    if (current && current != screen) {
-        screen_history.push_back(current);
+    
+    printf("navigate_to: current=%p, target=%p\n", (void*)current_screen, (void*)screen);
+    
+    if (current_screen && current_screen != screen) {
+        screen_history.push_back(current_screen);
+        // Hide previous screen
+        lv_obj_add_flag(current_screen, LV_OBJ_FLAG_HIDDEN);
     }
-    lv_scr_load(screen);
-    printf("navigate_to: lv_scr_load called, new active screen=%p\n", (void*)lv_scr_act());
+    
+    // Show target screen
+    lv_obj_clear_flag(screen, LV_OBJ_FLAG_HIDDEN);
+    current_screen = screen;
+    
+    // Force active screen to be the target (for LVGL internal state)
+    lv_disp_t *disp = lv_disp_get_default();
+    if (disp) {
+        disp->act_scr = screen;
+    }
+    
+    printf("navigate_to: screen switched to %p, active=%p\n", (void*)screen, (void*)lv_scr_act());
 }
 static void navigate_back() {
     if (!screen_history.empty()) {
         lv_obj_t *target = screen_history.back();
         screen_history.pop_back();
         printf("navigate_back: to %p\n", (void*)target);
-        lv_scr_load(target);
+        navigate_to(target);
     } else {
         printf("navigate_back: to Standby (history empty)\n");
-        lv_scr_load(ui_StandbyScreen);
+        navigate_to(ui_StandbyScreen);
     }
 }
 
@@ -188,6 +204,7 @@ extern "C" {
     }
     
     void onBrewStart(lv_event_t *e) {
+        printf("[BUTTON] onBrewStart called\n");
         sim_brewing = !sim_brewing;
         printf("Brew %s\n", sim_brewing ? "started" : "stopped");
         // Start or stop in-place simulation on Brew screen
@@ -319,7 +336,10 @@ extern "C" {
         // Navigation and screen load
         // Caret (^) back button: go back to previous screen if known, else Standby
         void onMenuClick(lv_event_t *e) {
+            printf("[BUTTON] onMenuClick called\n");
             lv_obj_t *current = lv_scr_act();
+            printf("[NAV] current screen=%p, ui_BrewScreen=%p, ui_ProfileScreen=%p, ui_MenuScreen=%p, ui_StandbyScreen=%p\n",
+                   (void*)current, (void*)ui_BrewScreen, (void*)ui_ProfileScreen, (void*)ui_MenuScreen, (void*)ui_StandbyScreen);
             
             // If brewing, caret acts as cancel
             if (current == ui_BrewScreen && sim_brewing) {
@@ -341,6 +361,7 @@ extern "C" {
             if (current == ui_BrewScreen || current == ui_GrindScreen || current == ui_SimpleProcessScreen) {
                 printf("Back to Menu screen\n");
                 show_toast("Back to Menu");
+                printf("[NAV] Calling navigate_to(ui_MenuScreen=%p)\n", (void*)ui_MenuScreen);
                 navigate_to(ui_MenuScreen);
                 return;
             }
@@ -349,6 +370,7 @@ extern "C" {
             if (current == ui_MenuScreen) {
                 printf("Back to Standby\n");
                 show_toast("Back to Standby");
+                printf("[NAV] Calling navigate_to(ui_StandbyScreen=%p)\n", (void*)ui_StandbyScreen);
                 navigate_to(ui_StandbyScreen);
                 return;
             }

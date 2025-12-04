@@ -248,13 +248,31 @@ int main(int argc, char **argv) {
     extern void ui_StatusScreen_screen_init(void);
     extern void ui_SimpleProcessScreen_screen_init(void);
 
+    printf("[SIM] Calling screen init functions...\n");
     ui_StandbyScreen_screen_init();
+    printf("[SIM] ui_StandbyScreen = %p\n", (void*)ui_StandbyScreen);
     ui_BrewScreen_screen_init();
+    printf("[SIM] ui_BrewScreen = %p\n", (void*)ui_BrewScreen);
     ui_GrindScreen_screen_init();
+    printf("[SIM] ui_GrindScreen = %p\n", (void*)ui_GrindScreen);
     ui_MenuScreen_screen_init();
+    printf("[SIM] ui_MenuScreen = %p\n", (void*)ui_MenuScreen);
     ui_ProfileScreen_screen_init();
+    printf("[SIM] ui_ProfileScreen = %p\n", (void*)ui_ProfileScreen);
     ui_StatusScreen_screen_init();
+    printf("[SIM] ui_StatusScreen = %p\n", (void*)ui_StatusScreen);
     ui_SimpleProcessScreen_screen_init();
+    printf("[SIM] ui_SimpleProcessScreen = %p\n", (void*)ui_SimpleProcessScreen);
+    
+    // Hide all screens except Standby (skip Init screen)
+    lv_obj_add_flag(ui_InitScreen, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(ui_MenuScreen, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(ui_BrewScreen, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(ui_GrindScreen, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(ui_ProfileScreen, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(ui_StatusScreen, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(ui_SimpleProcessScreen, LV_OBJ_FLAG_HIDDEN);
+    // Standby is the starting screen - keep it visible
 
     // Ensure initial screen transitions from Init to Standby after 2 seconds
     extern lv_obj_t *ui_StandbyScreen;
@@ -272,8 +290,11 @@ static void transition_cb(lv_timer_t *t) {
     (void)t;
     extern lv_obj_t *ui_StandbyScreen;
     extern lv_obj_t *ui_InitScreen;
-    if (lv_scr_act() == ui_InitScreen && ui_StandbyScreen) {
-        lv_scr_load(ui_StandbyScreen);
+    printf("[SIM] Transition callback fired\n");
+    if (ui_InitScreen && ui_StandbyScreen) {
+        // Hide Init, show Standby
+        lv_obj_add_flag(ui_InitScreen, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(ui_StandbyScreen, LV_OBJ_FLAG_HIDDEN);
         printf("[SIM] Auto-transition: Init -> Standby\n");
     }
 }
