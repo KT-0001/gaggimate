@@ -70,22 +70,22 @@ static void navigate_to(lv_obj_t *screen) {
         return;
     }
     lv_obj_t *current = lv_scr_act();
-    printf("navigate_to: current=%p, target=%p\n", current, screen);
+    printf("navigate_to: current=%p, target=%p\n", (void*)current, (void*)screen);
     if (current && current != screen) {
         screen_history.push_back(current);
     }
-    lv_scr_load_anim(screen, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
-    printf("navigate_to: lv_scr_load_anim called, new active screen=%p\n", lv_scr_act());
+    lv_scr_load(screen);
+    printf("navigate_to: lv_scr_load called, new active screen=%p\n", (void*)lv_scr_act());
 }
 static void navigate_back() {
     if (!screen_history.empty()) {
         lv_obj_t *target = screen_history.back();
         screen_history.pop_back();
-        printf("navigate_back: to %p\n", target);
-        lv_scr_load_anim(target, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
+        printf("navigate_back: to %p\n", (void*)target);
+        lv_scr_load(target);
     } else {
         printf("navigate_back: to Standby (history empty)\n");
-        lv_scr_load_anim(ui_StandbyScreen, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
+        lv_scr_load(ui_StandbyScreen);
     }
 }
 
@@ -332,24 +332,24 @@ extern "C" {
             // If on Profile screen, go back to Brew directly
             if (current == ui_ProfileScreen) {
                 printf("Back from Profile to Brew\n");
+                show_toast("Back to Brew");
                 navigate_to(ui_BrewScreen);
-                lv_timer_create([](lv_timer_t *t){ show_toast("Back to Brew"); lv_timer_del(t); }, 50, NULL);
                 return;
             }
             
             // From main function screens (Brew/Grind/SimpleProcess), go to MenuScreen
             if (current == ui_BrewScreen || current == ui_GrindScreen || current == ui_SimpleProcessScreen) {
                 printf("Back to Menu screen\n");
+                show_toast("Back to Menu");
                 navigate_to(ui_MenuScreen);
-                lv_timer_create([](lv_timer_t *t){ show_toast("Back to Menu"); lv_timer_del(t); }, 50, NULL);
                 return;
             }
             
             // From MenuScreen or other screens, go to Standby
             if (current == ui_MenuScreen) {
                 printf("Back to Standby\n");
+                show_toast("Back to Standby");
                 navigate_to(ui_StandbyScreen);
-                lv_timer_create([](lv_timer_t *t){ show_toast("Back to Standby"); lv_timer_del(t); }, 50, NULL);
                 return;
             }
             
@@ -387,40 +387,13 @@ extern "C" {
                     lv_obj_clear_flag(ui_BrewScreen_ImgButton5, LV_OBJ_FLAG_HIDDEN);
                     lv_obj_clear_flag(ui_BrewScreen_ImgButton5, LV_OBJ_FLAG_SCROLLABLE);
                     lv_obj_add_flag(ui_BrewScreen_ImgButton5, LV_OBJ_FLAG_CLICKABLE);
-                    lv_obj_add_flag(ui_BrewScreen_ImgButton5, LV_OBJ_FLAG_ADV_HITTEST);
-                    // Explicitly ensure click triggers back navigation even if generated events differ
-                    lv_obj_remove_event_cb(ui_BrewScreen_ImgButton5, NULL); // Clear existing
-                    lv_obj_add_event_cb(ui_BrewScreen_ImgButton5, onMenuClick, LV_EVENT_CLICKED, NULL);
-                    printf("Brew caret button: clickable, z-top, onMenuClick bound\n");
+                    printf("Brew caret button: made clickable and moved to front\n");
                 }
                 // Ensure the central content panel doesn't intercept clicks over the caret region
                 if (ui_BrewScreen_contentPanel4) {
                     lv_obj_clear_flag(ui_BrewScreen_contentPanel4, LV_OBJ_FLAG_CLICKABLE);
                     printf("Content panel: clickable flag cleared\n");
                 }
-            }
-            // Create arrow buttons for profile navigation if missing
-            if (ui_BrewScreen_Container3 && !ui_BrewScreen_previousProfileBtn) {
-                ui_BrewScreen_previousProfileBtn = lv_imgbtn_create(ui_BrewScreen_Container3);
-                lv_imgbtn_set_src(ui_BrewScreen_previousProfileBtn, LV_IMGBTN_STATE_RELEASED, NULL, &ui_img_98036921, NULL);
-                lv_obj_set_width(ui_BrewScreen_previousProfileBtn, 40);
-                lv_obj_set_height(ui_BrewScreen_previousProfileBtn, 40);
-                lv_obj_set_align(ui_BrewScreen_previousProfileBtn, LV_ALIGN_CENTER);
-                lv_obj_set_style_img_recolor(ui_BrewScreen_previousProfileBtn, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
-                lv_obj_set_style_img_recolor_opa(ui_BrewScreen_previousProfileBtn, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-                lv_obj_add_event_cb(ui_BrewScreen_previousProfileBtn, onPreviousProfile, LV_EVENT_CLICKED, NULL);
-
-                ui_BrewScreen_nextProfileBtn = lv_imgbtn_create(ui_BrewScreen_Container3);
-                lv_imgbtn_set_src(ui_BrewScreen_nextProfileBtn, LV_IMGBTN_STATE_RELEASED, NULL, &ui_img_944513416, NULL);
-                lv_obj_set_width(ui_BrewScreen_nextProfileBtn, 40);
-                lv_obj_set_height(ui_BrewScreen_nextProfileBtn, 40);
-                lv_obj_set_align(ui_BrewScreen_nextProfileBtn, LV_ALIGN_CENTER);
-                lv_obj_set_style_img_recolor(ui_BrewScreen_nextProfileBtn, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
-                lv_obj_set_style_img_recolor_opa(ui_BrewScreen_nextProfileBtn, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-                lv_obj_add_event_cb(ui_BrewScreen_nextProfileBtn, onNextProfile, LV_EVENT_CLICKED, NULL);
-
-                // Place previous at start for better layout
-                lv_obj_move_to_index(ui_BrewScreen_previousProfileBtn, 0);
             }
             printf("Brew screen loaded; start visible, accept hidden, arrows ensured\n");
         }
