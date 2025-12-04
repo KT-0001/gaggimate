@@ -73,8 +73,6 @@ static void navigate_to(lv_obj_t *screen) {
         return;
     }
     
-    printf("navigate_to: current=%p, target=%p\n", (void*)current_screen, (void*)screen);
-    
     if (current_screen && current_screen != screen) {
         screen_history.push_back(current_screen);
         // Hide previous screen
@@ -90,8 +88,6 @@ static void navigate_to(lv_obj_t *screen) {
     if (disp) {
         disp->act_scr = screen;
     }
-    
-    printf("navigate_to: screen switched to %p, active=%p\n", (void*)screen, (void*)lv_scr_act());
 }
 static void navigate_back() {
     if (!screen_history.empty()) {
@@ -338,8 +334,6 @@ extern "C" {
         void onMenuClick(lv_event_t *e) {
             printf("[BUTTON] onMenuClick called\n");
             lv_obj_t *current = lv_scr_act();
-            printf("[NAV] current screen=%p, ui_BrewScreen=%p, ui_ProfileScreen=%p, ui_MenuScreen=%p, ui_StandbyScreen=%p\n",
-                   (void*)current, (void*)ui_BrewScreen, (void*)ui_ProfileScreen, (void*)ui_MenuScreen, (void*)ui_StandbyScreen);
             
             // If brewing, caret acts as cancel
             if (current == ui_BrewScreen && sim_brewing) {
@@ -361,7 +355,6 @@ extern "C" {
             if (current == ui_BrewScreen || current == ui_GrindScreen || current == ui_SimpleProcessScreen) {
                 printf("Back to Menu screen\n");
                 show_toast("Back to Menu");
-                printf("[NAV] Calling navigate_to(ui_MenuScreen=%p)\n", (void*)ui_MenuScreen);
                 navigate_to(ui_MenuScreen);
                 return;
             }
@@ -370,7 +363,6 @@ extern "C" {
             if (current == ui_MenuScreen) {
                 printf("Back to Standby\n");
                 show_toast("Back to Standby");
-                printf("[NAV] Calling navigate_to(ui_StandbyScreen=%p)\n", (void*)ui_StandbyScreen);
                 navigate_to(ui_StandbyScreen);
                 return;
             }
