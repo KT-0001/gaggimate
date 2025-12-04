@@ -1,12 +1,55 @@
-.pio
-env/
-pcb/**/Gaggimate-backups
-pcb/**/*.kicad_sch_old
-.vscode
-.idea
-node_modules/
-__pycache__
-data/w
+# Build artifacts
+.pio/
+.pio/build/
+sim/build/
+build/
+*.o
+*.a
+*.so
+*.dylib
+
+# IDEs & Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
 .codebuddy
+
+# Environment
+env/
+.venv/
+venv/
+
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Generated files
 src/version.h
 src/display/ui/default/lvgl/project.info
+data/w
+
+# Hardware/PCB
+pcb/**/Gaggimate-backups
+pcb/**/*.kicad_sch_old
+pcb/**/*.kicad_pcb.bak
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Python
+.pytest_cache/
+.coverage
+htmlcov/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
