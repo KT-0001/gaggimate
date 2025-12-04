@@ -31,6 +31,12 @@ extern lv_obj_t * ui_BrewScreen_profileName;
 extern lv_obj_t * ui_BrewScreen_adjustments;
 extern lv_obj_t * ui_BrewScreen_targetTemp;
 extern lv_obj_t * ui_BrewScreen_targetDuration;
+extern lv_obj_t * ui_BrewScreen_startButton;
+extern lv_obj_t * ui_BrewScreen_acceptButton;
+// SimpleProcess screen (Steam/Water) child references
+extern lv_obj_t * ui_SimpleProcessScreen_targetTemp;
+// Grind screen child references
+extern lv_obj_t * ui_GrindScreen_targetDuration;
 // Dials (from component children)
 extern lv_obj_t * uic_BrewScreen_dials_tempGauge;
 extern lv_obj_t * uic_BrewScreen_dials_tempTarget;
@@ -59,20 +65,27 @@ static const char * sim_profile_files[] = {"data/p/lever.json","data/p/9bar.json
 // Navigation history stack for caret/back behavior
 static std::vector<lv_obj_t*> screen_history;
 static void navigate_to(lv_obj_t *screen) {
-    if (!screen) return;
+    if (!screen) {
+        printf("navigate_to: NULL screen pointer!\n");
+        return;
+    }
     lv_obj_t *current = lv_scr_act();
+    printf("navigate_to: current=%p, target=%p\n", current, screen);
     if (current && current != screen) {
         screen_history.push_back(current);
     }
-    lv_scr_load(screen);
+    lv_scr_load_anim(screen, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
+    printf("navigate_to: lv_scr_load_anim called, new active screen=%p\n", lv_scr_act());
 }
 static void navigate_back() {
     if (!screen_history.empty()) {
         lv_obj_t *target = screen_history.back();
         screen_history.pop_back();
-        lv_scr_load(target);
+        printf("navigate_back: to %p\n", target);
+        lv_scr_load_anim(target, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
     } else {
-        lv_scr_load(ui_StandbyScreen);
+        printf("navigate_back: to Standby (history empty)\n");
+        lv_scr_load_anim(ui_StandbyScreen, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
     }
 }
 
@@ -306,27 +319,122 @@ extern "C" {
         // Navigation and screen load
         // Caret (^) back button: go back to previous screen if known, else Standby
         void onMenuClick(lv_event_t *e) {
+            lv_obj_t *current = lv_scr_act();
+            
             // If brewing, caret acts as cancel
-            if (lv_scr_act() == ui_BrewScreen && sim_brewing) {
+            if (current == ui_BrewScreen && sim_brewing) {
                 onBrewCancel(e);
                 show_toast("Brew cancelled");
                 printf("Caret/back cancelled brew\n");
                 return;
             }
+            
             // If on Profile screen, go back to Brew directly
-            if (lv_scr_act() == ui_ProfileScreen) {
-                navigate_to(ui_BrewScreen);
-                show_toast("Back to Brew");
+            if (current == ui_ProfileScreen) {
                 printf("Back from Profile to Brew\n");
+                navigate_to(ui_BrewScreen);
+                lv_timer_create([](lv_timer_t *t){ show_toast("Back to Brew"); lv_timer_del(t); }, 50, NULL);
                 return;
             }
+            
+            // From main function screens (Brew/Grind/SimpleProcess), go to MenuScreen
+            if (current == ui_BrewScreen || current == ui_GrindScreen || current == ui_SimpleProcessScreen) {
+                printf("Back to Menu screen\n");
+                navigate_to(ui_MenuScreen);
+                lv_timer_create([](lv_timer_t *t){ show_toast("Back to Menu"); lv_timer_del(t); }, 50, NULL);
+                return;
+            }
+            
+            // From MenuScreen or other screens, go to Standby
+            if (current == ui_MenuScreen) {
+                printf("Back to Standby\n");
+                navigate_to(ui_StandbyScreen);
+                lv_timer_create([](lv_timer_t *t){ show_toast("Back to Standby"); lv_timer_del(t); }, 50, NULL);
+                return;
+            }
+            
             // Otherwise pop history or fall back to Standby
             navigate_back();
+            show_toast("Back");
             printf("Back navigation invoked\n");
         }
-        void onStandby(lv_event_t *e) { onStandbyScreen(e); }
-        void onBrewScreenLoad(lv_event_t *e) { /* no-op for sim */ }
-        void onGrindScreenLoad(lv_event_t *e) { /* no-op for sim */ }
+        void onStandby(lv_event_t *e) {
+            printf("onStandby called - going to standby screen\n");
+            onStandbyScreen(e);
+        }
+        void onBrewScreenLoad(lv_event_t *e) {
+            // Screen just loaded: default state shows start button, not accept tick
+            // Accept tick is only shown when user comes from ProfileScreen via "choose" action
+            // To prevent overlap: ensure accept is hidden and start is visible
+            if (ui_BrewScreen_acceptButton) {
+                lv_obj_add_flag(ui_BrewScreen_acceptButton, LV_OBJ_FLAG_HIDDEN);
+            }
+            if (ui_BrewScreen_startButton) {
+                lv_obj_clear_flag(ui_BrewScreen_startButton, LV_OBJ_FLAG_HIDDEN);
+            }
+            if (ui_BrewScreen_profileInfo) {
+                lv_obj_clear_flag(ui_BrewScreen_profileInfo, LV_OBJ_FLAG_HIDDEN);
+            }
+            // Ensure caret/back button is clickable and on top of other controls
+            if (ui_BrewScreen) {
+                // Find caret image button by known pointer if available
+                extern lv_obj_t * ui_BrewScreen_ImgButton5;
+                extern lv_obj_t * ui_BrewScreen_contentPanel4;
+                if (ui_BrewScreen_ImgButton5) {
+                    // Bring caret to front so it isn't occluded by content panel
+                    lv_obj_move_to_index(ui_BrewScreen_ImgButton5, -1);
+                    // Make sure it's not hidden and is clickable
+                    lv_obj_clear_flag(ui_BrewScreen_ImgButton5, LV_OBJ_FLAG_HIDDEN);
+                    lv_obj_clear_flag(ui_BrewScreen_ImgButton5, LV_OBJ_FLAG_SCROLLABLE);
+                    lv_obj_add_flag(ui_BrewScreen_ImgButton5, LV_OBJ_FLAG_CLICKABLE);
+                    lv_obj_add_flag(ui_BrewScreen_ImgButton5, LV_OBJ_FLAG_ADV_HITTEST);
+                    // Explicitly ensure click triggers back navigation even if generated events differ
+                    lv_obj_remove_event_cb(ui_BrewScreen_ImgButton5, NULL); // Clear existing
+                    lv_obj_add_event_cb(ui_BrewScreen_ImgButton5, onMenuClick, LV_EVENT_CLICKED, NULL);
+                    printf("Brew caret button: clickable, z-top, onMenuClick bound\n");
+                }
+                // Ensure the central content panel doesn't intercept clicks over the caret region
+                if (ui_BrewScreen_contentPanel4) {
+                    lv_obj_clear_flag(ui_BrewScreen_contentPanel4, LV_OBJ_FLAG_CLICKABLE);
+                    printf("Content panel: clickable flag cleared\n");
+                }
+            }
+            // Create arrow buttons for profile navigation if missing
+            if (ui_BrewScreen_Container3 && !ui_BrewScreen_previousProfileBtn) {
+                ui_BrewScreen_previousProfileBtn = lv_imgbtn_create(ui_BrewScreen_Container3);
+                lv_imgbtn_set_src(ui_BrewScreen_previousProfileBtn, LV_IMGBTN_STATE_RELEASED, NULL, &ui_img_98036921, NULL);
+                lv_obj_set_width(ui_BrewScreen_previousProfileBtn, 40);
+                lv_obj_set_height(ui_BrewScreen_previousProfileBtn, 40);
+                lv_obj_set_align(ui_BrewScreen_previousProfileBtn, LV_ALIGN_CENTER);
+                lv_obj_set_style_img_recolor(ui_BrewScreen_previousProfileBtn, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
+                lv_obj_set_style_img_recolor_opa(ui_BrewScreen_previousProfileBtn, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
+                lv_obj_add_event_cb(ui_BrewScreen_previousProfileBtn, onPreviousProfile, LV_EVENT_CLICKED, NULL);
+
+                ui_BrewScreen_nextProfileBtn = lv_imgbtn_create(ui_BrewScreen_Container3);
+                lv_imgbtn_set_src(ui_BrewScreen_nextProfileBtn, LV_IMGBTN_STATE_RELEASED, NULL, &ui_img_944513416, NULL);
+                lv_obj_set_width(ui_BrewScreen_nextProfileBtn, 40);
+                lv_obj_set_height(ui_BrewScreen_nextProfileBtn, 40);
+                lv_obj_set_align(ui_BrewScreen_nextProfileBtn, LV_ALIGN_CENTER);
+                lv_obj_set_style_img_recolor(ui_BrewScreen_nextProfileBtn, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
+                lv_obj_set_style_img_recolor_opa(ui_BrewScreen_nextProfileBtn, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
+                lv_obj_add_event_cb(ui_BrewScreen_nextProfileBtn, onNextProfile, LV_EVENT_CLICKED, NULL);
+
+                // Place previous at start for better layout
+                lv_obj_move_to_index(ui_BrewScreen_previousProfileBtn, 0);
+            }
+            printf("Brew screen loaded; start visible, accept hidden, arrows ensured\n");
+        }
+        void onGrindScreenLoad(lv_event_t *e) {
+            // Initialize duration display
+            if (ui_GrindScreen_targetDuration) {
+                int minutes = (int)(sim_grind_time) / 60;
+                int seconds = (int)(sim_grind_time) % 60;
+                char buf[16];
+                snprintf(buf, sizeof(buf), "%d:%02d", minutes, seconds);
+                lv_label_set_text(ui_GrindScreen_targetDuration, buf);
+            }
+            printf("Grind screen loaded\n");
+        }
         void onMenuScreenLoad(lv_event_t *e) { /* no-op for sim */ }
         // replaced by functional implementation below
         // void onProfileScreenLoad(lv_event_t *e) { /* no-op for sim */ }
@@ -490,9 +598,6 @@ extern "C" {
             printf("Brew cancelled and UI reset\n");
         }
         void onProfileSaveAsNew(lv_event_t *e) { printf("Profile saved as new based on: %s\n", sim_profiles[sim_profile_index]); }
-    
-        // Grinding controls
-        void onGrindToggle(lv_event_t *e) { printf("Grind toggle\n"); }
         void onNextProfile(lv_event_t *e) {
             sim_profile_index = (sim_profile_index + 1) % (sizeof(sim_profiles)/sizeof(sim_profiles[0]));
             lv_obj_t *scr = lv_scr_act();
@@ -550,98 +655,101 @@ extern "C" {
         }
         printf("Brew time: %.1fs\n", sim_brew_time);
     }
+
+    // Grinding controls
+    void onGrindToggle(lv_event_t *e) {
+        sim_brewing = !sim_brewing;
+        show_toast(sim_brewing ? "Grinding..." : "Stopped");
+        printf("Grind %s\n", sim_brewing ? "started" : "stopped");
+    }
     
     void onSteamTempLower(lv_event_t *e) {
         sim_temperature = (sim_temperature > 100.0f) ? sim_temperature - 1.0f : 100.0f;
+        if (ui_SimpleProcessScreen_targetTemp) {
+            char buf[16];
+            snprintf(buf, sizeof(buf), "%.0f°C", sim_temperature);
+            lv_label_set_text(ui_SimpleProcessScreen_targetTemp, buf);
+        }
+        show_toast("-");
         printf("Steam temperature: %.1f°C\n", sim_temperature);
     }
     
     void onSteamTempRaise(lv_event_t *e) {
         sim_temperature = (sim_temperature < 140.0f) ? sim_temperature + 1.0f : 140.0f;
+        if (ui_SimpleProcessScreen_targetTemp) {
+            char buf[16];
+            snprintf(buf, sizeof(buf), "%.0f°C", sim_temperature);
+            lv_label_set_text(ui_SimpleProcessScreen_targetTemp, buf);
+        }
+        show_toast("+");
         printf("Steam temperature: %.1f°C\n", sim_temperature);
+    }
+    
+    void onGrindTimeLower(lv_event_t *e) {
+        sim_grind_time = (sim_grind_time > 5.0f) ? sim_grind_time - 0.5f : 5.0f;
+        if (ui_GrindScreen_targetDuration) {
+            int minutes = (int)(sim_grind_time) / 60;
+            int seconds = (int)(sim_grind_time) % 60;
+            char buf[16];
+            snprintf(buf, sizeof(buf), "%d:%02d", minutes, seconds);
+            lv_label_set_text(ui_GrindScreen_targetDuration, buf);
+        }
+        show_toast("-");
+        printf("Grind time: %.1fs\n", sim_grind_time);
+    }
+    
+    void onGrindTimeRaise(lv_event_t *e) {
+        sim_grind_time = (sim_grind_time < 30.0f) ? sim_grind_time + 0.5f : 30.0f;
+        if (ui_GrindScreen_targetDuration) {
+            int minutes = (int)(sim_grind_time) / 60;
+            int seconds = (int)(sim_grind_time) % 60;
+            char buf[16];
+            snprintf(buf, sizeof(buf), "%d:%02d", minutes, seconds);
+            lv_label_set_text(ui_GrindScreen_targetDuration, buf);
+        }
+        show_toast("+");
+        printf("Grind time: %.1fs\n", sim_grind_time);
     }
     
     void onBrewScreen(lv_event_t *e) {
         navigate_to(ui_BrewScreen);
         sim_brewing = false;
-        // Ensure accept/tick is visible on Brew when selecting profiles
-        if (ui_BrewScreen_acceptButton) {
-            lv_obj_clear_flag(ui_BrewScreen_acceptButton, LV_OBJ_FLAG_HIDDEN);
-        }
-        if (ui_BrewScreen_profileInfo) {
-            lv_obj_clear_flag(ui_BrewScreen_profileInfo, LV_OBJ_FLAG_HIDDEN);
-        }
-        
-        // Add arrow buttons to Container3 for profile navigation (if not already created)
-        if (ui_BrewScreen_Container3 && !ui_BrewScreen_previousProfileBtn) {
-            // Create Previous Profile button (left arrow)
-            ui_BrewScreen_previousProfileBtn = lv_imgbtn_create(ui_BrewScreen_Container3);
-            lv_imgbtn_set_src(ui_BrewScreen_previousProfileBtn, LV_IMGBTN_STATE_RELEASED, NULL, &ui_img_98036921, NULL);
-            lv_obj_set_width(ui_BrewScreen_previousProfileBtn, 40);
-            lv_obj_set_height(ui_BrewScreen_previousProfileBtn, 40);
-            lv_obj_set_align(ui_BrewScreen_previousProfileBtn, LV_ALIGN_CENTER);
-            lv_obj_set_style_img_recolor(ui_BrewScreen_previousProfileBtn, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
-            lv_obj_set_style_img_recolor_opa(ui_BrewScreen_previousProfileBtn, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-            lv_obj_add_event_cb(ui_BrewScreen_previousProfileBtn, onPreviousProfile, LV_EVENT_CLICKED, NULL);
-            
-            // Create Next Profile button (right arrow)
-            ui_BrewScreen_nextProfileBtn = lv_imgbtn_create(ui_BrewScreen_Container3);
-            lv_imgbtn_set_src(ui_BrewScreen_nextProfileBtn, LV_IMGBTN_STATE_RELEASED, NULL, &ui_img_944513416, NULL);
-            lv_obj_set_width(ui_BrewScreen_nextProfileBtn, 40);
-            lv_obj_set_height(ui_BrewScreen_nextProfileBtn, 40);
-            lv_obj_set_align(ui_BrewScreen_nextProfileBtn, LV_ALIGN_CENTER);
-            lv_obj_set_style_img_recolor(ui_BrewScreen_nextProfileBtn, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
-            lv_obj_set_style_img_recolor_opa(ui_BrewScreen_nextProfileBtn, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-            lv_obj_add_event_cb(ui_BrewScreen_nextProfileBtn, onNextProfile, LV_EVENT_CLICKED, NULL);
-            
-            // Move children within Container3 to get proper flex order:
-            // We want: [prevBtn] [profileName] [settingsBtn] [profileSelectBtn] [nextBtn]
-            // Container3 has flex row layout, so order matters
-            // Move previousBtn to front, nextBtn to end
-            lv_obj_move_to_index(ui_BrewScreen_previousProfileBtn, 0);
-            // nextBtn should be last (will auto-position at end with flex)
-        }
-        
-        printf("Navigated to Brew Screen\n");
+        show_toast("Brew");
+        printf("Navigated to Brew Screen from Menu\n");
     }
     
     void onWaterScreen(lv_event_t *e) {
         navigate_to(ui_SimpleProcessScreen);
+        show_toast("Water");
         printf("Navigated to Water Screen\n");
     }
     
     void onSteamScreen(lv_event_t *e) {
         navigate_to(ui_SimpleProcessScreen);
+        show_toast("Steam");
         printf("Navigated to Steam Screen\n");
     }
     
     void onWakeup(lv_event_t *e) {
-        navigate_to(ui_BrewScreen);
-        printf("Wake up - navigated to Brew Screen\n");
+        navigate_to(ui_MenuScreen);
+        show_toast("Wake up");
+        printf("Wake up - navigated to Menu Screen\n");
     }
     
     void onFlush(lv_event_t *e) {
+        show_toast("Flush");
         printf("Flush activated\n");
     }
     
     void onGrindScreen(lv_event_t *e) {
         navigate_to(ui_GrindScreen);
+        show_toast("Grind");
         printf("Navigated to Grind Screen\n");
     }
     
     void onGrindStart(lv_event_t *e) {
         printf("Grind started for %.1fs\n", sim_grind_time);
         if (ui_SimpleProcessScreen) lv_scr_load(ui_SimpleProcessScreen);
-    }
-    
-    void onGrindTimeLower(lv_event_t *e) {
-        sim_grind_time = (sim_grind_time > 5.0f) ? sim_grind_time - 0.5f : 5.0f;
-        printf("Grind time: %.1fs\n", sim_grind_time);
-    }
-    
-    void onGrindTimeRaise(lv_event_t *e) {
-        sim_grind_time = (sim_grind_time < 30.0f) ? sim_grind_time + 0.5f : 30.0f;
-        printf("Grind time: %.1fs\n", sim_grind_time);
     }
     
     void onMenuScreen(lv_event_t *e) {
@@ -656,6 +764,7 @@ extern "C" {
     
     void onProfileSelect(lv_event_t *e) {
         navigate_to(ui_ProfileScreen);
+            show_toast("Open Profile selection");
         printf("Open Profile selection\n");
     }
     
@@ -737,12 +846,27 @@ extern "C" void onProfileLoad(lv_event_t *e) {
         show_toast("Applied default profile settings");
     }
     navigate_to(ui_BrewScreen);
-    printf("Profile applied: %s\n", name);
+    // Show accept tick, hide start button to prevent overlap
+    if (ui_BrewScreen_acceptButton) lv_obj_clear_flag(ui_BrewScreen_acceptButton, LV_OBJ_FLAG_HIDDEN);
+    if (ui_BrewScreen_startButton) lv_obj_add_flag(ui_BrewScreen_startButton, LV_OBJ_FLAG_HIDDEN);
+    printf("Profile applied: %s — accept visible, start hidden\n", name);
     // Treat 'choose' on ProfileScreen as accept + start brew
     onProfileAccept(e);
 }
-extern "C" void onSimpleProcessScreenLoad(lv_event_t *e) { printf("SimpleProcess loaded\n"); }
-extern "C" void onSimpleProcessToggle(lv_event_t *e) { sim_brewing = !sim_brewing; printf("Process %s\n", sim_brewing ? "resume" : "pause"); }
+extern "C" void onSimpleProcessScreenLoad(lv_event_t *e) {
+    // Initialize temperature display for steam/water
+    if (ui_SimpleProcessScreen_targetTemp) {
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%.0f°C", sim_temperature);
+        lv_label_set_text(ui_SimpleProcessScreen_targetTemp, buf);
+    }
+    printf("SimpleProcess loaded\n");
+}
+extern "C" void onSimpleProcessToggle(lv_event_t *e) {
+    sim_brewing = !sim_brewing;
+    show_toast(sim_brewing ? "Started" : "Stopped");
+    printf("Process %s\n", sim_brewing ? "started" : "stopped");
+}
 extern "C" void onStatusScreenLoad(lv_event_t *e) { /* no-op */ }
 
 // Telemetry accessor for tests (returns JSON string)

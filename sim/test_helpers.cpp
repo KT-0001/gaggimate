@@ -13,6 +13,7 @@
 // Declare simulator stub handlers provided by ui_stubs.cpp
 extern "C" void onMenuScreen(lv_event_t *e);
 extern "C" void onStandbyScreen(lv_event_t *e);
+extern "C" void onMenuClick(lv_event_t *e);
 extern "C" void onGrindStart(lv_event_t *e);
 extern "C" void onStatusScreen(lv_event_t *e);
 extern "C" void onBrewStart(lv_event_t *e);
@@ -116,7 +117,8 @@ void simulateButtonClick(const char* button_id) {
     } else if (strcmp(button_id, "menu_button") == 0) {
         onMenuScreen(&dummy_event);
     } else if (strcmp(button_id, "back_button") == 0) {
-        onStandbyScreen(&dummy_event);
+        // Use the same back handler as the UI caret (^)
+        onMenuClick(&dummy_event);
     } else if (strcmp(button_id, "profile_button") == 0 || strcmp(button_id, "profile_select_button") == 0) {
         onProfileSelect(&dummy_event);
     } else if (strcmp(button_id, "status_button") == 0) {
