@@ -44,12 +44,17 @@
             border: 2px solid #333;
             border-radius: 8px;
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            width: 480px;
+            height: 480px;
+            overflow: visible;
         }
         canvas {
             display: block;
             cursor: pointer;
             image-rendering: pixelated;
             image-rendering: crisp-edges;
+            width: 480px !important;
+            height: 480px !important;
         }
         .controls {
             margin-top: 20px;
@@ -257,9 +262,14 @@
     </div>
     
     <script>
+        // Ensure canvas is exactly 480x480 before loading WASM
+        var canvas = document.getElementById('canvas');
+        canvas.width = 480;
+        canvas.height = 480;
+        
         // This will be loaded from the compiled WASM module
         var Module = {
-            canvas: document.getElementById('canvas'),
+            canvas: canvas,
             preRun: [],
             postRun: [],
             print: function(text) {

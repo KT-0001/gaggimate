@@ -8,6 +8,7 @@
 #include <vector>
 #include <string>
 #include <stdio.h>
+#include <math.h>
 
 extern "C" void onMenuScreen(lv_event_t *e);
 extern "C" void onStandbyScreen(lv_event_t *e);
@@ -31,12 +32,22 @@ extern lv_obj_t * ui_BrewScreen_profileName;
 extern lv_obj_t * ui_BrewScreen_adjustments;
 extern lv_obj_t * ui_BrewScreen_targetTemp;
 extern lv_obj_t * ui_BrewScreen_targetDuration;
+extern lv_obj_t * ui_BrewScreen_mainLabel3;
 extern lv_obj_t * ui_BrewScreen_startButton;
 extern lv_obj_t * ui_BrewScreen_acceptButton;
+// Timer label for brew display (will be created dynamically)
+static lv_obj_t * brew_timer_label = NULL;
 // SimpleProcess screen (Steam/Water) child references
+extern lv_obj_t * ui_SimpleProcessScreen_contentPanel5;
+extern lv_obj_t * ui_SimpleProcessScreen_goButton;
 extern lv_obj_t * ui_SimpleProcessScreen_targetTemp;
+extern lv_obj_t * ui_SimpleProcessScreen_mainLabel5;
 // Grind screen child references
 extern lv_obj_t * ui_GrindScreen_targetDuration;
+extern lv_obj_t * ui_GrindScreen_weightLabel;
+extern lv_obj_t * ui_GrindScreen_contentPanel7;
+extern lv_obj_t * ui_GrindScreen_startButton;
+extern lv_obj_t * ui_GrindScreen_targetContainer;
 // Dials (from component children)
 extern lv_obj_t * uic_BrewScreen_dials_tempGauge;
 extern lv_obj_t * uic_BrewScreen_dials_tempTarget;
@@ -44,6 +55,12 @@ extern lv_obj_t * uic_BrewScreen_dials_pressureGauge;
 extern lv_obj_t * uic_BrewScreen_dials_pressureTarget;
 extern lv_obj_t * uic_BrewScreen_dials_pressureText;
 extern lv_obj_t * uic_BrewScreen_dials_tempText;
+
+// SimpleProcessScreen dials
+extern lv_obj_t * uic_SimpleProcessScreen_dials_tempGauge;
+extern lv_obj_t * uic_SimpleProcessScreen_dials_pressureGauge;
+extern lv_obj_t * uic_SimpleProcessScreen_dials_pressureText;
+extern lv_obj_t * uic_SimpleProcessScreen_dials_tempText;
 
 // Image references for arrow buttons (from ProfileScreen)
 extern const lv_img_dsc_t ui_img_98036921; // left arrow
@@ -62,6 +79,8 @@ static bool sim_volumetric = false; // false=timed, true=volumetric
 static int sim_profile_index = 0;
 static const char * sim_profiles[] = {"Cremina Lever","9Bar","LM Leva","Classic"};
 static const char * sim_profile_files[] = {"data/p/lever.json","data/p/9bar.json","data/p/lmleva.json","data/p/adapt.json"};
+static bool sim_is_steam = true; // true=steam, false=water
+static bool sim_coming_from_profile = false; // track if navigating from profile selection
 // Navigation history stack for caret/back behavior
 static std::vector<lv_obj_t*> screen_history;
 // Current active screen tracker
@@ -92,6 +111,9 @@ static void navigate_to(lv_obj_t *screen) {
     if (disp) {
         disp->act_scr = screen;
     }
+    
+    // Trigger SCREEN_LOADED event so screen-specific initialization runs
+    lv_event_send(screen, LV_EVENT_SCREEN_LOADED, NULL);
 }
 static void navigate_back() {
     if (!screen_history.empty()) {
@@ -142,13 +164,19 @@ struct SimPhase {
 static std::vector<SimPhase> sim_phases;
 static int sim_phase_index = -1;
 static float sim_phase_elapsed = 0.0f;
+static float sim_total_elapsed = 0.0f;
+static bool sim_simple_process_active = false;  // SimpleProcess (steam/water) state
+static bool sim_grind_active = false;  // Grind state
+static float sim_grind_weight = 0.0f;  // Current grind weight
+static lv_obj_t * brew_weight_label = NULL;  // Weight display during brewing
 
 static void sim_load_phases_for_profile(const char *name) {
     sim_phases.clear();
     sim_phase_index = -1;
     sim_phase_elapsed = 0.0f;
-    // Minimal mappings based on attached profiles.json
+    // Minimal mappings based on actual profile data
     if (strcmp(name, "9 Bar Espresso") == 0 || strcmp(name, "9Bar") == 0 || strcmp(name, "9 bar profile") == 0) {
+        // From 9bar.json: 28s duration, 36g target
         sim_phases.push_back({SimPhase::BREW, 28.0f, 9.0f, 0.0f, 93.0f, 36.0f});
     } else if (strcmp(name, "9 bar pre infusion ") == 0) {
         sim_phases.push_back({SimPhase::PREINFUSION, 6.0f, 2.0f, 0.0f, 93.0f, 0.0f});
@@ -165,6 +193,32 @@ static void sim_load_phases_for_profile(const char *name) {
         sim_phases.push_back({SimPhase::BREW, 5.0f, 8.0f, 0.0f, 88.0f, 0.0f});
         sim_phases.push_back({SimPhase::BREW, 5.0f, 8.0f, 0.0f, 88.0f, 0.0f});
         sim_phases.push_back({SimPhase::BREW, 58.0f, 2.2f, 0.0f, 88.0f, 36.0f});
+    } else if (strcmp(name, "Cremina Lever") == 0) {
+        // Lever machine profile from lever.json: 2+3+10+10+50=75s total, 36g target
+        sim_phases.push_back({SimPhase::PREINFUSION, 2.0f, 1.1f, 0.0f, 86.5f, 0.0f});  // preinfusion start
+        sim_phases.push_back({SimPhase::PREINFUSION, 3.0f, 1.1f, 0.0f, 86.5f, 0.0f});  // preinfusion
+        sim_phases.push_back({SimPhase::PREINFUSION, 10.0f, 1.1f, 0.0f, 86.5f, 0.0f}); // soak
+        sim_phases.push_back({SimPhase::BREW, 10.0f, 9.0f, 0.0f, 86.5f, 0.0f});        // ramp to 9 bar
+        sim_phases.push_back({SimPhase::BREW, 50.0f, 3.0f, 0.0f, 87.0f, 36.0f});       // ramp-down to 3 bar, stop at 36g
+    } else if (strcmp(name, "Classic") == 0) {
+        // Classic 9 bar profile
+        sim_phases.push_back({SimPhase::BREW, 30.0f, 9.0f, 0.0f, 93.0f, 36.0f});
+    }
+    
+    // Calculate flow rate based on total duration and target weight
+    if (!sim_phases.empty()) {
+        float total_duration = 0.0f;
+        float target_weight = 0.0f;
+        for (const auto &phase : sim_phases) {
+            total_duration += phase.duration_s;
+            if (phase.stop_volumetric_g > 0) {
+                target_weight = phase.stop_volumetric_g;
+            }
+        }
+        // Set flow rate to achieve target weight over total duration
+        if (total_duration > 0 && target_weight > 0) {
+            sim_flow_rate_gps = target_weight / total_duration;
+        }
     }
 }
 
@@ -188,8 +242,13 @@ static void sim_begin_next_phase() {
 extern "C" {
     // Visual confirmations for UI clicks, then delegate to existing logic
     void onBrewAcceptClicked(lv_event_t *e) {
-        show_toast("Tick clicked");
-        onProfileAccept(e);
+        // Close the adjustments panel and return to normal Brew view
+        if (ui_BrewScreen_adjustments) lv_obj_add_flag(ui_BrewScreen_adjustments, LV_OBJ_FLAG_HIDDEN);
+        if (ui_BrewScreen_profileInfo) lv_obj_clear_flag(ui_BrewScreen_profileInfo, LV_OBJ_FLAG_HIDDEN);
+        if (ui_BrewScreen_acceptButton) lv_obj_add_flag(ui_BrewScreen_acceptButton, LV_OBJ_FLAG_HIDDEN);
+        if (ui_BrewScreen_startButton) lv_obj_clear_flag(ui_BrewScreen_startButton, LV_OBJ_FLAG_HIDDEN);
+        show_toast("Settings accepted ☑");
+        printf("Brew settings accepted, start button now visible\n");
     }
     void onProfileChooseClicked(lv_event_t *e) {
         show_toast("Choose clicked");
@@ -212,6 +271,7 @@ extern "C" {
             // Reset state
             sim_weight = 0.0f;
             sim_phase_elapsed = 0.0f;
+            sim_total_elapsed = 0.0f;
             // Try to read target weight from label if present (e.g., "36.0g")
             if (ui_BrewScreen_weightLabel) {
                 const char *txt = lv_label_get_text(ui_BrewScreen_weightLabel);
@@ -228,24 +288,102 @@ extern "C" {
             const char *pname = sim_profiles[sim_profile_index];
             sim_load_phases_for_profile(pname);
             if (!sim_phases.empty()) {
+                // Calculate flow rate based on total duration and target weight
+                float total_duration = 0.0f;
+                float target_weight = 0.0f;
+                for (const auto &phase : sim_phases) {
+                    total_duration += phase.duration_s;
+                    if (phase.stop_volumetric_g > 0) {
+                        target_weight = phase.stop_volumetric_g;
+                    }
+                }
+                // Set flow rate to achieve target weight over total duration
+                if (total_duration > 0 && target_weight > 0) {
+                    sim_flow_rate_gps = target_weight / total_duration;
+                } else {
+                    sim_flow_rate_gps = 1.2f; // Default conservative flow rate
+                }
                 sim_begin_next_phase();
             } else {
                 // Default single-phase brew if none mapped
                 sim_phases = { {SimPhase::BREW, sim_brew_time, sim_target_pressure_bar, 0.0f, sim_temperature, sim_volumetric ? sim_target_weight : 0.0f} };
                 sim_phase_index = -1;
+                sim_flow_rate_gps = sim_target_weight / sim_brew_time;
                 sim_begin_next_phase();
             }
+            
+            // Create or show weight label during brewing (like StatusScreen_brewVolume)
+            // Position: y=0 centered in contentPanel4, matching StatusScreen exactly
+            if (!brew_weight_label && ui_BrewScreen_contentPanel4) {
+                brew_weight_label = lv_label_create(ui_BrewScreen_contentPanel4);
+                lv_obj_set_width(brew_weight_label, 120);
+                lv_obj_set_height(brew_weight_label, 30);
+                lv_obj_set_x(brew_weight_label, 0);
+                lv_obj_set_y(brew_weight_label, 0);  // y=0 like StatusScreen_brewVolume
+                lv_obj_set_align(brew_weight_label, LV_ALIGN_CENTER);
+                lv_obj_set_style_text_font(brew_weight_label, &lv_font_montserrat_24, LV_PART_MAIN);
+                lv_obj_set_style_text_color(brew_weight_label, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+                lv_obj_set_style_text_align(brew_weight_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+            }
+            if (brew_weight_label) {
+                lv_obj_clear_flag(brew_weight_label, LV_OBJ_FLAG_HIDDEN);
+                lv_label_set_text(brew_weight_label, "0.0 g");
+            }
+            
+            // Create or show timer label (like StatusScreen_currentDuration)
+            // Position: y=70 in contentPanel4, matching StatusScreen exactly
+            if (!brew_timer_label && ui_BrewScreen_contentPanel4) {
+                brew_timer_label = lv_label_create(ui_BrewScreen_contentPanel4);
+                lv_obj_set_width(brew_timer_label, 150);
+                lv_obj_set_height(brew_timer_label, 50);
+                lv_obj_set_x(brew_timer_label, 0);
+                lv_obj_set_y(brew_timer_label, 70);  // y=70 like StatusScreen_currentDuration
+                lv_obj_set_align(brew_timer_label, LV_ALIGN_CENTER);
+                lv_obj_set_style_text_font(brew_timer_label, &lv_font_montserrat_34, LV_PART_MAIN);
+                lv_obj_set_style_text_color(brew_timer_label, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+                lv_obj_set_style_text_align(brew_timer_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+            }
+            // Show timer label during brewing
+            if (brew_timer_label) {
+                lv_obj_clear_flag(brew_timer_label, LV_OBJ_FLAG_HIDDEN);
+                lv_label_set_text(brew_timer_label, "0:00");
+            }
+            
+            // Hide profile info during brewing (like real device switches to StatusScreen)
+            if (ui_BrewScreen_controlContainer) {
+                lv_obj_add_flag(ui_BrewScreen_controlContainer, LV_OBJ_FLAG_HIDDEN);
+            }
+            
+            // Initialize timer display to 0:00 (in adjustments, for compatibility)
+            if (ui_BrewScreen_targetDuration) {
+                lv_label_set_text(ui_BrewScreen_targetDuration, "0:00");
+            }
+            // Initialize phase label
+            if (ui_BrewScreen_mainLabel3 && sim_phase_index >= 0 && sim_phase_index < (int)sim_phases.size()) {
+                const SimPhase &p = sim_phases[sim_phase_index];
+                const char *phase_name = (p.kind == SimPhase::PREINFUSION) ? "Preinfusion" : "Brew";
+                lv_label_set_text(ui_BrewScreen_mainLabel3, phase_name);
+            }
+            
             // Create/update a timer to simulate flow
             if (brew_timer) { lv_timer_del(brew_timer); brew_timer = NULL; }
             brew_timer = lv_timer_create([](lv_timer_t *t){
                 // Advance time/weight
-                sim_weight += sim_flow_rate_gps * (t->period / 1000.0f);
-                sim_phase_elapsed += (t->period / 1000.0f);
+                float delta_t = t->period / 1000.0f;
+                sim_weight += sim_flow_rate_gps * delta_t;
+                sim_phase_elapsed += delta_t;
+                sim_total_elapsed += delta_t;
                 // Update on-screen labels
                 if (ui_BrewScreen_weightLabel) {
                     char buf[16];
                     snprintf(buf, sizeof(buf), "%.1f g", sim_weight);
                     lv_label_set_text(ui_BrewScreen_weightLabel, buf);
+                }
+                // Update brew weight label (visible during brewing)
+                if (brew_weight_label) {
+                    char buf[16];
+                    snprintf(buf, sizeof(buf), "%.1f g", sim_weight);
+                    lv_label_set_text(brew_weight_label, buf);
                 }
                 // Phase dynamics: ramp pressure to current target over first 2s of each phase
                 float ramp_time = 2.0f;
@@ -258,19 +396,67 @@ extern "C" {
                 if (uic_BrewScreen_dials_pressureGauge) {
                     lv_arc_set_value(uic_BrewScreen_dials_pressureGauge, (int)(sim_pressure_bar));
                 }
-                if (uic_BrewScreen_dials_pressureTarget) {
-                    lv_arc_set_value(uic_BrewScreen_dials_pressureTarget, (int)(sim_target_pressure_bar));
-                }
                 if (uic_BrewScreen_dials_pressureText) {
                     char ptxt[16];
                     snprintf(ptxt, sizeof(ptxt), "%.1f", sim_pressure_bar);
                     lv_label_set_text(uic_BrewScreen_dials_pressureText, ptxt);
                 }
+                // Update pressure target arrow: follow the blue pressure gauge
+                // Gauge: 298° start, 62° end, REVERSE mode, range 0-16
+                // In REVERSE: value increases from start to end angle going counterclockwise
+                if (uic_BrewScreen_dials_pressureTarget) {
+                    float pressure_pct = sim_target_pressure_bar / 16.0f;
+                    
+                    // Map directly: 0 bar = 298°, 16 bar = 62°
+                    // Going counterclockwise from 298° to 62° (short path through top)
+                    // 298° + progress wraps through 360° to 62°
+                    float start_angle = 298.0f;
+                    float end_angle = 62.0f;
+                    
+                    // Counterclockwise span: 298 -> 360 = 62°, then 0 -> 62 = 62°, total = 124°
+                    float angle_deg = start_angle + (pressure_pct * 124.0f);
+                    
+                    // Normalize to 0-360
+                    while (angle_deg < 0.0f) angle_deg += 360.0f;
+                    while (angle_deg >= 360.0f) angle_deg -= 360.0f;
+                    while (angle_deg >= 360.0f) angle_deg -= 360.0f;
+                    
+                    // Convert to radians
+                    float angle_rad = angle_deg * M_PI / 180.0f;
+                    
+                    // Arrow is on a circle at radius ~240 pixels from center
+                    float radius = 240.0f;
+                    int x_pos = (int)(radius * cosf(angle_rad));
+                    int y_pos = (int)(radius * sinf(angle_rad));
+                    
+                    // Rotate image to point radially outward (add 90°)
+                    float img_angle = angle_deg + 90.0f;
+                    while (img_angle >= 360.0f) img_angle -= 360.0f;
+                    int angle_cdeg = (int)(img_angle * 10.0f);
+                    
+                    lv_obj_set_x(uic_BrewScreen_dials_pressureTarget, x_pos);
+                    lv_obj_set_y(uic_BrewScreen_dials_pressureTarget, y_pos);
+                    lv_img_set_angle(uic_BrewScreen_dials_pressureTarget, angle_cdeg);
+                }
                 if (uic_BrewScreen_dials_tempGauge) {
                     lv_arc_set_value(uic_BrewScreen_dials_tempGauge, (int)(sim_temp_c));
                 }
+                // Update temperature target arrow: follow the red temperature gauge
+                // Temperature gauge: 118° (0°C) to 242° (160°C) in normal mode
+                // Arrow rotates clockwise as temperature increases
                 if (uic_BrewScreen_dials_tempTarget) {
-                    lv_arc_set_value(uic_BrewScreen_dials_tempTarget, (int)(sim_temperature));
+                    // Map temperature (0-160°C) to arc angle (118° to 242°)
+                    // In normal mode, angle increases as value increases
+                    float temp_pct = sim_temp_c / 160.0f;
+                    float angle_deg = 118.0f + (temp_pct * 124.0f);  // 242 - 118 = 124°
+                    
+                    // Normalize to 0-360 range
+                    while (angle_deg < 0.0f) angle_deg += 360.0f;
+                    while (angle_deg >= 360.0f) angle_deg -= 360.0f;
+                    
+                    // Convert to centidegrees for LVGL (angle in 0.1° units)
+                    int angle_cdeg = (int)(angle_deg * 10.0f);
+                    lv_img_set_angle(uic_BrewScreen_dials_tempTarget, angle_cdeg);
                 }
                 if (uic_BrewScreen_dials_tempText) {
                     char ttxt[16];
@@ -291,24 +477,45 @@ extern "C" {
                 }
                 // Also enforce global volumetric in UI if enabled
                 if (sim_volumetric && sim_weight >= sim_target_weight) sim_brewing = false;
-                // Timed UI label update based on remaining of current phase or total brew_time if no phases
+                // Update total elapsed time display (counting up)
+                if (brew_timer_label) {
+                    int minutes = (int)(sim_total_elapsed) / 60;
+                    int seconds = (int)(sim_total_elapsed) % 60;
+                    char tbuf[16];
+                    snprintf(tbuf, sizeof(tbuf), "%d:%02d", minutes, seconds);
+                    lv_label_set_text(brew_timer_label, tbuf);
+                }
+                // Also update the one in adjustments for compatibility
                 if (ui_BrewScreen_targetDuration) {
-                    float remaining = 0.0f;
-                    if (sim_phase_index >= 0 && sim_phase_index < (int)sim_phases.size()) {
-                        const SimPhase &p = sim_phases[sim_phase_index];
-                        remaining = p.duration_s - sim_phase_elapsed;
-                    } else {
-                        remaining = sim_brew_time - sim_phase_elapsed;
-                    }
-                    if (remaining < 0) remaining = 0;
-                    int minutes = (int)(remaining) / 60;
-                    int seconds = (int)(remaining) % 60;
+                    int minutes = (int)(sim_total_elapsed) / 60;
+                    int seconds = (int)(sim_total_elapsed) % 60;
                     char tbuf[16];
                     snprintf(tbuf, sizeof(tbuf), "%d:%02d", minutes, seconds);
                     lv_label_set_text(ui_BrewScreen_targetDuration, tbuf);
                 }
+                // Update phase label
+                if (ui_BrewScreen_mainLabel3 && sim_phase_index >= 0 && sim_phase_index < (int)sim_phases.size()) {
+                    const SimPhase &p = sim_phases[sim_phase_index];
+                    const char *phase_name = (p.kind == SimPhase::PREINFUSION) ? "Preinfusion" : "Brew";
+                    lv_label_set_text(ui_BrewScreen_mainLabel3, phase_name);
+                }
                 if (!sim_brewing) {
                     // Done: cleanup and notify
+                    if (ui_BrewScreen_mainLabel3) {
+                        lv_label_set_text(ui_BrewScreen_mainLabel3, "Finish");
+                    }
+                    // Hide timer when done
+                    if (brew_timer_label) {
+                        lv_obj_add_flag(brew_timer_label, LV_OBJ_FLAG_HIDDEN);
+                    }
+                    // Hide weight label when done
+                    if (brew_weight_label) {
+                        lv_obj_add_flag(brew_weight_label, LV_OBJ_FLAG_HIDDEN);
+                    }
+                    // Show profile info again
+                    if (ui_BrewScreen_controlContainer) {
+                        lv_obj_clear_flag(ui_BrewScreen_controlContainer, LV_OBJ_FLAG_HIDDEN);
+                    }
                     show_toast("Shot complete");
                     lv_timer_t *self = t;
                     brew_timer = NULL;
@@ -318,6 +525,18 @@ extern "C" {
         } else {
             // Stop brewing
             if (brew_timer) { lv_timer_del(brew_timer); brew_timer = NULL; }
+            // Hide timer label when stopped
+            if (brew_timer_label) {
+                lv_obj_add_flag(brew_timer_label, LV_OBJ_FLAG_HIDDEN);
+            }
+            // Hide weight label when stopped
+            if (brew_weight_label) {
+                lv_obj_add_flag(brew_weight_label, LV_OBJ_FLAG_HIDDEN);
+            }
+            // Show profile info again when stopped
+            if (ui_BrewScreen_controlContainer) {
+                lv_obj_clear_flag(ui_BrewScreen_controlContainer, LV_OBJ_FLAG_HIDDEN);
+            }
             show_toast("Shot stopped");
         }
     }
@@ -384,15 +603,52 @@ extern "C" {
             // Screen just loaded: default state shows start button, not accept tick
             // Accept tick is only shown when user comes from ProfileScreen via "choose" action
             // To prevent overlap: ensure accept is hidden and start is visible
-            if (ui_BrewScreen_acceptButton) {
-                lv_obj_add_flag(ui_BrewScreen_acceptButton, LV_OBJ_FLAG_HIDDEN);
+            if (sim_coming_from_profile) {
+                // Coming from profile selection - show accept tick, hide start button
+                if (ui_BrewScreen_acceptButton) {
+                    lv_obj_clear_flag(ui_BrewScreen_acceptButton, LV_OBJ_FLAG_HIDDEN);
+                }
+                if (ui_BrewScreen_startButton) {
+                    lv_obj_add_flag(ui_BrewScreen_startButton, LV_OBJ_FLAG_HIDDEN);
+                }
+                sim_coming_from_profile = false;
+            } else {
+                // Normal navigation - show start button, hide accept tick
+                if (ui_BrewScreen_acceptButton) {
+                    lv_obj_add_flag(ui_BrewScreen_acceptButton, LV_OBJ_FLAG_HIDDEN);
+                }
+                if (ui_BrewScreen_startButton) {
+                    lv_obj_clear_flag(ui_BrewScreen_startButton, LV_OBJ_FLAG_HIDDEN);
+                }
             }
-            if (ui_BrewScreen_startButton) {
-                lv_obj_clear_flag(ui_BrewScreen_startButton, LV_OBJ_FLAG_HIDDEN);
-            }
+            
             if (ui_BrewScreen_profileInfo) {
                 lv_obj_clear_flag(ui_BrewScreen_profileInfo, LV_OBJ_FLAG_HIDDEN);
             }
+            // Ensure adjustments panel is hidden by default
+            if (ui_BrewScreen_adjustments) {
+                lv_obj_add_flag(ui_BrewScreen_adjustments, LV_OBJ_FLAG_HIDDEN);
+            }
+            
+            // Update pressure target arrow to show profile target
+            if (uic_BrewScreen_dials_pressureTarget) {
+                float pressure_pct = sim_target_pressure_bar / 16.0f;
+                float start_angle = 298.0f;
+                float angle_deg = start_angle + (pressure_pct * 124.0f);
+                while (angle_deg < 0.0f) angle_deg += 360.0f;
+                while (angle_deg >= 360.0f) angle_deg -= 360.0f;
+                float angle_rad = angle_deg * M_PI / 180.0f;
+                float radius = 240.0f;
+                int x_pos = (int)(radius * cosf(angle_rad));
+                int y_pos = (int)(radius * sinf(angle_rad));
+                float img_angle = angle_deg + 90.0f;
+                while (img_angle >= 360.0f) img_angle -= 360.0f;
+                int angle_cdeg = (int)(img_angle * 10.0f);
+                lv_obj_set_x(uic_BrewScreen_dials_pressureTarget, x_pos);
+                lv_obj_set_y(uic_BrewScreen_dials_pressureTarget, y_pos);
+                lv_img_set_angle(uic_BrewScreen_dials_pressureTarget, angle_cdeg);
+            }
+            
             // Ensure caret/back button is clickable and on top of other controls
             if (ui_BrewScreen) {
                 // Find caret image button by known pointer if available
@@ -461,7 +717,12 @@ extern "C" {
         // Settings button should open Settings/Status, not profile chooser
         void onProfileSettings(lv_event_t *e) {
             navigate_to(ui_BrewScreen);
-            if (ui_BrewScreen_adjustments) lv_obj_clear_flag(ui_BrewScreen_adjustments, LV_OBJ_FLAG_HIDDEN);
+            if (ui_BrewScreen_adjustments) {
+                lv_obj_clear_flag(ui_BrewScreen_adjustments, LV_OBJ_FLAG_HIDDEN);
+                // Add background to prevent bleed-through
+                lv_obj_set_style_bg_opa(ui_BrewScreen_adjustments, LV_OPA_COVER, LV_PART_MAIN);
+                lv_obj_set_style_bg_color(ui_BrewScreen_adjustments, lv_color_hex(0x000000), LV_PART_MAIN);
+            }
             if (ui_BrewScreen_profileInfo) lv_obj_add_flag(ui_BrewScreen_profileInfo, LV_OBJ_FLAG_HIDDEN);
             show_toast("Brew settings opened");
             printf("Opened Brew settings mode on Brew screen\n");
@@ -649,9 +910,123 @@ extern "C" {
 
     // Grinding controls
     void onGrindToggle(lv_event_t *e) {
-        sim_brewing = !sim_brewing;
-        show_toast(sim_brewing ? "Grinding..." : "Stopped");
-        printf("Grind %s\n", sim_brewing ? "started" : "stopped");
+        sim_grind_active = !sim_grind_active;
+        
+        if (sim_grind_active) {
+            show_toast("Grinding...");
+            printf("Grind started\n");
+            
+            // Hide start button
+            if (ui_GrindScreen_startButton) {
+                lv_obj_add_flag(ui_GrindScreen_startButton, LV_OBJ_FLAG_HIDDEN);
+            }
+            
+            // Hide target container
+            if (ui_GrindScreen_targetContainer) {
+                lv_obj_add_flag(ui_GrindScreen_targetContainer, LV_OBJ_FLAG_HIDDEN);
+            }
+            
+            // Reset grind weight
+            sim_grind_weight = 0.0f;
+            sim_total_elapsed = 0.0f;
+            
+            // Calculate weight rate: target weight / target time
+            float target_weight = 18.0f; // default 18g
+            float grind_rate_gps = target_weight / sim_grind_time; // grams per second
+            
+            // Create timer label if needed
+            if (!brew_timer_label && ui_GrindScreen_contentPanel7) {
+                brew_timer_label = lv_label_create(ui_GrindScreen_contentPanel7);
+                lv_obj_set_width(brew_timer_label, 150);
+                lv_obj_set_height(brew_timer_label, 50);
+                lv_obj_set_y(brew_timer_label, 0);
+                lv_obj_set_align(brew_timer_label, LV_ALIGN_CENTER);
+                lv_obj_set_style_text_font(brew_timer_label, &lv_font_montserrat_34, LV_PART_MAIN);
+                lv_obj_set_style_text_color(brew_timer_label, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+                lv_obj_set_style_text_align(brew_timer_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+            }
+            
+            // Show timer
+            if (brew_timer_label) {
+                lv_obj_clear_flag(brew_timer_label, LV_OBJ_FLAG_HIDDEN);
+                lv_label_set_text(brew_timer_label, "0:00");
+            }
+            
+            // Update weight label to show 0g
+            if (ui_GrindScreen_weightLabel) {
+                lv_label_set_text(ui_GrindScreen_weightLabel, "0.0 g");
+            }
+            
+            // Start grind timer
+            if (brew_timer) { lv_timer_del(brew_timer); brew_timer = NULL; }
+            brew_timer = lv_timer_create([](lv_timer_t *t){
+                float delta_t = t->period / 1000.0f;
+                sim_total_elapsed += delta_t;
+                sim_grind_weight += (18.0f / sim_grind_time) * delta_t;
+                
+                // Update timer
+                if (brew_timer_label) {
+                    int minutes = (int)(sim_total_elapsed) / 60;
+                    int seconds = (int)(sim_total_elapsed) % 60;
+                    char tbuf[32];
+                    snprintf(tbuf, sizeof(tbuf), "%d:%02d", minutes, seconds);
+                    lv_label_set_text(brew_timer_label, tbuf);
+                }
+                
+                // Update weight
+                if (ui_GrindScreen_weightLabel) {
+                    char wbuf[32];
+                    snprintf(wbuf, sizeof(wbuf), "%.1f g", sim_grind_weight);
+                    lv_label_set_text(ui_GrindScreen_weightLabel, wbuf);
+                }
+                
+                // Auto-stop when reaching target time
+                if (sim_total_elapsed >= sim_grind_time) {
+                    sim_grind_active = false;
+                    if (brew_timer) {
+                        lv_timer_t *self = t;
+                        brew_timer = NULL;
+                        lv_timer_del(self);
+                    }
+                    show_toast("Grind complete");
+                    
+                    // Hide timer
+                    if (brew_timer_label) {
+                        lv_obj_add_flag(brew_timer_label, LV_OBJ_FLAG_HIDDEN);
+                    }
+                    
+                    // Show controls again
+                    if (ui_GrindScreen_startButton) {
+                        lv_obj_clear_flag(ui_GrindScreen_startButton, LV_OBJ_FLAG_HIDDEN);
+                    }
+                    if (ui_GrindScreen_targetContainer) {
+                        lv_obj_clear_flag(ui_GrindScreen_targetContainer, LV_OBJ_FLAG_HIDDEN);
+                    }
+                }
+            }, 200, NULL);
+        } else {
+            show_toast("Stopped");
+            printf("Grind stopped\n");
+            
+            // Stop timer
+            if (brew_timer) {
+                lv_timer_del(brew_timer);
+                brew_timer = NULL;
+            }
+            
+            // Hide timer label
+            if (brew_timer_label) {
+                lv_obj_add_flag(brew_timer_label, LV_OBJ_FLAG_HIDDEN);
+            }
+            
+            // Show controls
+            if (ui_GrindScreen_startButton) {
+                lv_obj_clear_flag(ui_GrindScreen_startButton, LV_OBJ_FLAG_HIDDEN);
+            }
+            if (ui_GrindScreen_targetContainer) {
+                lv_obj_clear_flag(ui_GrindScreen_targetContainer, LV_OBJ_FLAG_HIDDEN);
+            }
+        }
     }
     
     void onSteamTempLower(lv_event_t *e) {
@@ -710,12 +1085,14 @@ extern "C" {
     }
     
     void onWaterScreen(lv_event_t *e) {
+        sim_is_steam = false;
         navigate_to(ui_SimpleProcessScreen);
         show_toast("Water");
         printf("Navigated to Water Screen\n");
     }
     
     void onSteamScreen(lv_event_t *e) {
+        sim_is_steam = true;
         navigate_to(ui_SimpleProcessScreen);
         show_toast("Steam");
         printf("Navigated to Steam Screen\n");
@@ -836,27 +1213,144 @@ extern "C" void onProfileLoad(lv_event_t *e) {
         }
         show_toast("Applied default profile settings");
     }
+    // Set flag before navigation so onBrewScreenLoad knows to show accept button
+    sim_coming_from_profile = true;
     navigate_to(ui_BrewScreen);
-    // Show accept tick, hide start button to prevent overlap
-    if (ui_BrewScreen_acceptButton) lv_obj_clear_flag(ui_BrewScreen_acceptButton, LV_OBJ_FLAG_HIDDEN);
-    if (ui_BrewScreen_startButton) lv_obj_add_flag(ui_BrewScreen_startButton, LV_OBJ_FLAG_HIDDEN);
     printf("Profile applied: %s — accept visible, start hidden\n", name);
-    // Treat 'choose' on ProfileScreen as accept + start brew
-    onProfileAccept(e);
 }
 extern "C" void onSimpleProcessScreenLoad(lv_event_t *e) {
+    // Update label based on steam/water mode
+    if (ui_SimpleProcessScreen_mainLabel5) {
+        lv_label_set_text(ui_SimpleProcessScreen_mainLabel5, sim_is_steam ? "Steam" : "Water");
+    }
     // Initialize temperature display for steam/water
     if (ui_SimpleProcessScreen_targetTemp) {
         char buf[16];
         snprintf(buf, sizeof(buf), "%.0f°C", sim_temperature);
         lv_label_set_text(ui_SimpleProcessScreen_targetTemp, buf);
     }
-    printf("SimpleProcess loaded\n");
+    printf("SimpleProcess loaded: %s\n", sim_is_steam ? "Steam" : "Water");
 }
 extern "C" void onSimpleProcessToggle(lv_event_t *e) {
-    sim_brewing = !sim_brewing;
-    show_toast(sim_brewing ? "Started" : "Stopped");
-    printf("Process %s\n", sim_brewing ? "started" : "stopped");
+    sim_simple_process_active = !sim_simple_process_active;
+    const char *process_label = "Process";
+    if (ui_SimpleProcessScreen_mainLabel5) {
+        process_label = lv_label_get_text(ui_SimpleProcessScreen_mainLabel5);
+    }
+    
+    if (sim_simple_process_active) {
+        char msg[64];
+        snprintf(msg, sizeof(msg), "%s started", process_label);
+        show_toast(msg);
+        printf("%s started\n", process_label);
+        
+        // Hide the go button (matches real device behavior)
+        if (ui_SimpleProcessScreen_goButton) {
+            lv_obj_add_flag(ui_SimpleProcessScreen_goButton, LV_OBJ_FLAG_HIDDEN);
+        }
+        
+        // Create timer label if it doesn't exist
+        if (!brew_timer_label && ui_SimpleProcessScreen_contentPanel5) {
+            brew_timer_label = lv_label_create(ui_SimpleProcessScreen_contentPanel5);
+            lv_obj_set_width(brew_timer_label, 150);
+            lv_obj_set_height(brew_timer_label, 50);
+            lv_obj_set_y(brew_timer_label, 70);  // y=70 to match BrewScreen timer position
+            lv_obj_set_align(brew_timer_label, LV_ALIGN_CENTER);
+            lv_obj_set_style_text_font(brew_timer_label, &lv_font_montserrat_34, LV_PART_MAIN);
+            lv_obj_set_style_text_color(brew_timer_label, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+            lv_obj_set_style_text_align(brew_timer_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+        }
+        
+        // Show timer label
+        if (brew_timer_label) {
+            lv_obj_clear_flag(brew_timer_label, LV_OBJ_FLAG_HIDDEN);
+        }
+        
+        // Reset simulation state
+        sim_total_elapsed = 0.0f;
+        
+        // Determine process duration based on mode
+        float process_duration = 5.0f; // Default 5 seconds
+        if (sim_is_steam) {
+            process_duration = 5.0f; // Steam fill time ~5 seconds
+        } else {
+            process_duration = 10.0f; // Water dispense ~10 seconds
+        }
+        
+        // Reset pressure/temperature for simulation
+        sim_pressure_bar = 0.0f;
+        sim_temp_c = sim_temperature;
+        
+        // Start process timer
+        if (brew_timer) { lv_timer_del(brew_timer); brew_timer = NULL; }
+        brew_timer = lv_timer_create([](lv_timer_t *t){
+            float delta_t = t->period / 1000.0f; // 0.2 seconds
+            sim_total_elapsed += delta_t;
+            
+            // Update timer label
+            if (brew_timer_label) {
+                int minutes = (int)(sim_total_elapsed) / 60;
+                int seconds = (int)(sim_total_elapsed) % 60;
+                char tbuf[32];
+                snprintf(tbuf, sizeof(tbuf), "%d:%02d", minutes, seconds);
+                lv_label_set_text(brew_timer_label, tbuf);
+            }
+            
+            // Simulate pressure building up (for steam/water)
+            if (sim_pressure_bar < 1.5f) {
+                sim_pressure_bar += 0.05f; // Build to ~1.5 bar over 6 seconds
+            }
+            
+            // Update pressure gauge and text
+            if (uic_SimpleProcessScreen_dials_pressureGauge) {
+                lv_arc_set_value(uic_SimpleProcessScreen_dials_pressureGauge, (int)(sim_pressure_bar * 10));
+            }
+            if (uic_SimpleProcessScreen_dials_pressureText) {
+                char pbuf[16];
+                snprintf(pbuf, sizeof(pbuf), "%.1f", sim_pressure_bar);
+                lv_label_set_text(uic_SimpleProcessScreen_dials_pressureText, pbuf);
+            }
+            
+            // Update temperature gauge
+            if (uic_SimpleProcessScreen_dials_tempGauge) {
+                lv_arc_set_value(uic_SimpleProcessScreen_dials_tempGauge, (int)sim_temp_c);
+            }
+            if (uic_SimpleProcessScreen_dials_tempText) {
+                char tbuf2[16];
+                snprintf(tbuf2, sizeof(tbuf2), "%.0f", sim_temp_c);
+                lv_label_set_text(uic_SimpleProcessScreen_dials_tempText, tbuf2);
+            }
+            
+        }, 200, NULL);
+    } else {
+        char msg[64];
+        snprintf(msg, sizeof(msg), "%s stopped", process_label);
+        show_toast(msg);
+        printf("%s stopped\n", process_label);
+        if (brew_timer) { 
+            lv_timer_del(brew_timer); 
+            brew_timer = NULL; 
+        }
+        
+        // Hide timer label
+        if (brew_timer_label) {
+            lv_obj_add_flag(brew_timer_label, LV_OBJ_FLAG_HIDDEN);
+        }
+        
+        // Reset pressure to 0
+        sim_pressure_bar = 0.0f;
+        if (uic_SimpleProcessScreen_dials_pressureGauge) {
+            lv_arc_set_value(uic_SimpleProcessScreen_dials_pressureGauge, 0);
+        }
+        if (uic_SimpleProcessScreen_dials_pressureText) {
+            lv_label_set_text(uic_SimpleProcessScreen_dials_pressureText, "0.0");
+        }
+        
+        // Show go button again
+        if (ui_SimpleProcessScreen_goButton) {
+            lv_obj_clear_flag(ui_SimpleProcessScreen_goButton, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
 }
 extern "C" void onStatusScreenLoad(lv_event_t *e) { /* no-op */ }
 
